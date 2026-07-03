@@ -21,7 +21,7 @@ func chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler 
 // Router constructs the application HTTP handler.
 //
 // Route composition lives here in cmd/server, above the bounded contexts, so
-// the shared httpx kit stays a leaf: domain packages (auth, progress, session)
+// the shared httpx pkg stays a leaf: domain packages (auth, progress, session)
 // can import httpx for response/context helpers without an import cycle forming
 // when this function wires their routes in. Dependencies (services) are passed
 // in here, not pulled from globals.
@@ -39,8 +39,8 @@ func healthz(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-// readyz confirms the database is reachable, returning status ok if the db ping
-// succeeds within 2 seconds.
+// readyz confirms the database is reachable, returning status ok if the db
+// ping succeeds within 2 seconds.
 func readyz(ready func(context.Context) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
