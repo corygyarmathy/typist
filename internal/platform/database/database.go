@@ -28,7 +28,7 @@ import (
 func Open(ctx context.Context, connString string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(connString)
 	if err != nil {
-		return &pgxpool.Pool{}, fmt.Errorf("failed to parse db connString config: %w", err)
+		return &pgxpool.Pool{}, fmt.Errorf("parsing db connString config: %w", err)
 	}
 
 	cfg.MaxConns = 10
@@ -39,7 +39,7 @@ func Open(ctx context.Context, connString string) (*pgxpool.Pool, error) {
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
-		return &pgxpool.Pool{}, fmt.Errorf("failed to create pgxpool: %w", err)
+		return &pgxpool.Pool{}, fmt.Errorf("creating pgxpool: %w", err)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
@@ -57,7 +57,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	db := stdlib.OpenDBFromPool(pool)
 	defer func() {
 		if cerr := db.Close(); cerr != nil {
-			slog.Error("error closing database:", "cerr", cerr)
+			slog.Error("closing database:", "cerr", cerr)
 		}
 	}()
 
