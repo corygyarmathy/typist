@@ -27,6 +27,9 @@ servers:
   - url: https://typist.gyarmathy.co
     description: Homelab deployment
 
+security:
+  - bearerAuth: [] # default; public ops override with: 'security: []'
+
 # Phase 4 work: define paths as the handlers are built.
 # Potential initial surface:
 #
@@ -52,6 +55,7 @@ paths:
       summary: Liveness check
       description: Always 200 while the process is serving; does not touch the database.
       operationId: getHealthz
+      security: [] # public endpoint
       responses:
         "200":
           description: Service is alive
@@ -66,6 +70,7 @@ paths:
         Returns 200 when the database is reachable within 2s, otherwise 503.
         Used by orchestration to gate traffic until dependencies are healthy.
       operationId: getReadyz
+      security: [] # public endpoint
       responses:
         "200":
           description: Service is ready (database reachable)
@@ -81,6 +86,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
 
 components:
+  securitySchemes:
+    bearerAuth:
+      description: Bearer token using a JWT.
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     Health:
       type: object
