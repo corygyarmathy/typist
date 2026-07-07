@@ -60,6 +60,20 @@ jobs:
         run: |
           nix develop -c bash -c 'set -e; go version; go vet ./...; go build ./...; golangci-lint run ./...'
 
+  codegen:
+    # Enforce the reproducibility claim in ADR-0021: the committed
+    # internal/openapi/openapi.gen.go must match what the pinned generator
+    # produces from the committed api/openapi.yaml. Regenerating through
+    # `nix develop` uses the flake-pinned oapi-codegen (ADR-0017), so a
+    # non-empty diff means the generated file is stale or was hand-edited.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - name: Verify generated code is in sync with the spec
+        run: |
+          nix develop -c bash -c 'set -e; make openapi; git diff --exit-code internal/openapi/openapi.gen.go'
+
   build-image:
     needs: lint-and-test
     runs-on: ubuntu-latest
