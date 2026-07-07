@@ -1,6 +1,6 @@
 # ADR 0021: Generate the HTTP server contract with oapi-codegen
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-07-06
 - **Related Artefacts:**
   - Implements: `api/oapi-codegen.yaml`, `internal/openapi/openapi.gen.go`, `.github/workflows/ci.yml` (`codegen` job)
