@@ -1,0 +1,28 @@
+name: dependabot-auto-merge
+
+# Flip on GitHub's native auto-merge for Dependabot PRs so they merge themselves
+# once the required CI checks pass (ADR 0022). Branch protection on main is the
+# real gate - CI must be green - this workflow only schedules the merge. Without
+# it, a green Dependabot PR would sit waiting for a manual click.
+#
+# The GITHUB_TOKEN is elevated to pull-requests:write via the permissions block
+# below; Dependabot-triggered runs honour it. Merges are squashed to keep main's
+# history linear (ADR 0022).
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    # Only Dependabot's own PRs. github.actor is the PR author for pull_request.
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"
