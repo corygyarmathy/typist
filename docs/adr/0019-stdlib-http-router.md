@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-07-02
 - **Related Artefacts:**
-  - Implements:` internal/api/router.go`
+  - Implements: `cmd/server/router.go`
   - Constrains: `api/openapi.yaml` (error contract)
 
 ## Context
