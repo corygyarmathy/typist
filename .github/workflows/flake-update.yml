@@ -1,6 +1,6 @@
 name: flake-update
 
-# Dedicated Nix flake updater (ADR 0017). Weekly (and on demand) it:
+# Dedicated Nix flake updater (ADR 0017). Daily (and on demand) it:
 #   1. builds the dev-shell closure at the current flake.lock,
 #   2. runs `nix flake update`,
 #   3. builds the closure again (this also validates the updated shell builds),
@@ -20,7 +20,7 @@ name: flake-update
 
 on:
   schedule:
-    - cron: "0 6 * * 1" # Mondays
+    - cron: "0 6 * * *" # daily, 06:00 UTC (ADR 0017: nixpkgs-unstable has no event-driven security channel, so freshness is the only lever)
   workflow_dispatch: {}
 
 permissions:
