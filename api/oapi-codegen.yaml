@@ -1,0 +1,7 @@
+# YAML configuration file for oapi-codegen
+package: openapi
+generate:
+  std-http-server: true
+  strict-server: true
+  models: true
+output: internal/openapi/openapi.gen.go

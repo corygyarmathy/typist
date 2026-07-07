@@ -27,6 +27,9 @@ servers:
   - url: https://typist.gyarmathy.co
     description: Homelab deployment
 
+security:
+  - bearerAuth: [] # default; public ops override with: 'security: []'
+
 # Phase 4 work: define paths as the handlers are built.
 # Potential initial surface:
 #
@@ -52,6 +55,7 @@ paths:
       summary: Liveness check
       description: Always 200 while the process is serving; does not touch the database.
       operationId: getHealthz
+      security: [] # public endpoint
       responses:
         "200":
           description: Service is alive
@@ -66,6 +70,7 @@ paths:
         Returns 200 when the database is reachable within 2s, otherwise 503.
         Used by orchestration to gate traffic until dependencies are healthy.
       operationId: getReadyz
+      security: [] # public endpoint
       responses:
         "200":
           description: Service is ready (database reachable)
@@ -79,9 +84,155 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /auth/register:
+    post:
+      summary: Register user
+      description: >
+        Returns 200 when the user is successfully registered in the database,
+        400 on malformed request (invalid arguments), 409 on conflict (user
+        already registered).
+      operationId: registerUser
+      security: [] # public endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: User successfully registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Registration request malformed / invalid.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: User identifier already registered.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /auth/login:
+    post:
+      summary: Login user
+      description: >
+        Returns 200 when the user is successfully logged into the system,
+        400 on malformed request (invalid arguments), 401 on invalid
+        credentials.
+      operationId: loginUser
+      security: [] # public endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: User successfully logged in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Login request malformed / invalid.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Invalid credentials.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /progress:
+    get:
+      summary: Return user's current competency state.
+      description: >
+        Returns the user's competency state. Body shape is provisional; finalised
+        in phase 4 when the adaptive engine defines the canonical schema.
+      operationId: getProgress
+      responses:
+        "200":
+          description: Placeholder for JSON competency state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Competency"
+        "401":
+          description: Unauthorised, not authenticated.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
 
 components:
+  securitySchemes:
+    bearerAuth:
+      description: Bearer token using a JWT.
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
+    RegisterRequest:
+      type: object
+      description: Request to register user.
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          description: Email string.
+          format: email
+        password:
+          type: string
+          description: Plaintext password string.
+          minLength: 8
+          maxLength: 100
+    LoginRequest:
+      type: object
+      description: Login request.
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          description: Email string.
+          format: email
+        password:
+          type: string
+          description: Plaintext password string.
+          minLength: 8
+          maxLength: 100
+    TokenResponse:
+      type: object
+      description: JWT response, issued on successful register or login.
+      required:
+        - token
+        - token_type
+        - expires_in
+      properties:
+        token:
+          type: string
+          description: JWT string.
+        token_type:
+          type: string
+          description: Always 'Bearer'.
+        expires_in:
+          type: integer
+          description: Seconds until token expiry.
+    Competency:
+      type: object
+      description: Placeholder for JSON competency object.
     Health:
       type: object
       required: [status]
