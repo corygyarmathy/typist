@@ -1,6 +1,6 @@
 name: flake-update
 
-# Dedicated Nix flake updater (ADR 0017). Weekly (and on demand) it:
+# Dedicated Nix flake updater (ADR 0017). Daily (and on demand) it:
 #   1. builds the dev-shell closure at the current flake.lock,
 #   2. runs `nix flake update`,
 #   3. builds the closure again (this also validates the updated shell builds),
@@ -20,7 +20,7 @@ name: flake-update
 
 on:
   schedule:
-    - cron: "0 6 * * 1" # Mondays
+    - cron: "0 6 * * *" # daily, 06:00 UTC (ADR 0017: nixpkgs-unstable has no event-driven security channel, so freshness is the only lever)
   workflow_dispatch: {}
 
 permissions:
@@ -75,6 +75,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Open / update the flake bump PR
+        id: cpr
         if: steps.diff.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
@@ -103,3 +104,14 @@ jobs:
           labels: |
             dependencies
             nix
+
+      # Flip on GitHub's native auto-merge so the PR merges itself once the
+      # required CI checks pass (ADR 0022). Branch protection on main is the real
+      # gate; this only schedules the merge. Idempotent, so it is safe to re-run
+      # when an existing PR is updated with a newer closure. Uses the same PAT so
+      # it has pull-requests:write.
+      - name: Enable auto-merge on the flake PR
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.FLAKE_UPDATE_TOKEN }}
+        run: gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-number }}"
