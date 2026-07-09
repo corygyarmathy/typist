@@ -78,3 +78,12 @@ jobs:
       - uses: docker/setup-buildx-action@v4
       - name: Build Docker image
         run: docker build -f deploy/docker/Dockerfile -t typist:${{ github.sha }} .
+
+  govulncheck:
+    # Idiomatic Go tool for checking for vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+      - name: govulncheck
+        run: nix develop -c govulncheck ./...

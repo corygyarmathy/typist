@@ -26,6 +26,7 @@
             gopls
             gotools
             golangci-lint
+            govulncheck
 
             # Database tools
             goose
