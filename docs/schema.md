@@ -85,7 +85,7 @@ The `competency` document shape (this is exactly the engine's `CompetencyState`)
 
 ## Deferred tables
 
-- **`refresh_tokens`** — introduced by [ADR 0015](/docs/adr/0015-access-and-refresh-tokens.md) (rotating refresh tokens: hashed token, user, expiry, rotation lineage). **Out of scope for the v1 vertical slice**, which authenticates with a single short-lived access token only; the table and the `/auth/refresh` flow land when refresh ships. Listed here so this doc tracks the full intended design rather than going stale against ADR 0015.
+- **`refresh_tokens`** - introduced by [ADR 0015](/docs/adr/0015-access-and-refresh-tokens.md) (rotating refresh tokens: hashed token, user, expiry, rotation lineage). **Out of scope for the v1 vertical slice**, which authenticates with a single short-lived access token only; the table and the `/auth/refresh` flow land when refresh ships. Listed here so this doc tracks the full intended design rather than going stale against ADR 0015.
 
 ## Conventions
 
