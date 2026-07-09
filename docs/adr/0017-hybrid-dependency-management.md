@@ -26,7 +26,7 @@ Split dependency management by where each tool is strong:
 - **Dependabot** (`.github/dependabot.yml`) owns `gomod`, `docker`, and `github-actions` - periodic version updates, plus Dependabot security updates on the shipped surface (`gomod`, `docker`). The `nix` ecosystem block is removed.
 - **A dedicated `flake-update.yml` workflow** owns the flake. On a periodic schedule (and on demand), it builds the dev-shell closure before and after `nix flake update`, computes `nix store diff-closures`, and opens/updates a single PR via `peter-evans/create-pull-request` with the closure delta written **into the commit message body**. The same build that produces the "after" closure validates that the updated shell builds, so a broken bump fails the workflow and no PR is opened. An empty closure diff means `nix flake update` only refreshed `flake.lock` metadata (`rev`/`narHash`) without changing any package version; in that case the workflow opens no PR, since there is nothing to review or record in git history.
 
-The closure delta is therefore in the commit from the moment the PR exists — durable in `git log` independent of the merge strategy or any repo setting.
+The closure delta is therefore in the commit from the moment the PR exists - durable in `git log` independent of the merge strategy or any repo setting.
 
 The workflow checks out and creates the PR using a stored token (`secrets.FLAKE_UPDATE_TOKEN`, a fine-grained PAT or GitHub App token with `contents: write` + `pull-requests: write`) rather than the default `GITHUB_TOKEN`, so the resulting PR triggers `ci.yml` like any normal PR. This preserves the property that flake bumps run full CI (lint/test/build _and_ the `dev-shell` job), not just the in-workflow shell build.
 
