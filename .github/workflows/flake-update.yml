@@ -105,7 +105,7 @@ jobs:
             dependencies
             nix
 
-      # Flip on GitHub's native auto-merge so the PR merges itself once the
+      # Enable GitHub's native auto-merge so the PR merges itself once the
       # required CI checks pass (ADR 0022). Branch protection on main is the real
       # gate; this only schedules the merge. Idempotent, so it is safe to re-run
       # when an existing PR is updated with a newer closure. Uses the same PAT so
