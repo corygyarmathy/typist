@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/corygyarmathy/typist/internal/auth"
 	"github.com/corygyarmathy/typist/internal/openapi"
 )
 
@@ -23,6 +24,7 @@ var (
 // right context's handler. For now the domain ops are stubbed.
 type API struct {
 	ready func(ctx context.Context) error
+	auth  *auth.Handler
 }
 
 // Compile-time proof that *API satisfies the generated interface. If a method
@@ -57,12 +59,13 @@ func (a *API) GetReadyz(
 	return openapi.GetReadyz200JSONResponse{Status: openapi.Ok}, nil
 }
 
-// RegisterUser Placeholder logic, not implemented
+// RegisterUser registers a user: initialising all required objects.
+// Returns a JWT for the user to authenticate (login) with.
 func (a *API) RegisterUser(
 	ctx context.Context,
-	_ openapi.RegisterUserRequestObject,
+	req openapi.RegisterUserRequestObject,
 ) (openapi.RegisterUserResponseObject, error) {
-	return nil, errNotImplemented
+	return a.auth.RegisterUser(ctx, req)
 }
 
 // LoginUser Placeholder logic, not implemented

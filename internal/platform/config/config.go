@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // devJWTSecret is the placeholder used in compose.yaml. Refused in production.
@@ -15,11 +16,12 @@ const devJWTSecret = "dev-only-change-me"
 
 // Config holds all runtime configuration for the server.
 type Config struct {
-	HTTPAddr    string
-	DatabaseURL string
-	JWTSecret   Secret // see Secret below — redacts itself in logs
-	LogLevel    string
-	Env         string // "development" | "production"
+	HTTPAddr     string
+	DatabaseURL  string
+	JWTSecret    Secret // see Secret below - redacts itself in logs
+	JWTAccessTTL time.Duration
+	LogLevel     string
+	Env          string // "development" | "production"
 }
 
 // Load reads configuration from the process environment.
@@ -38,19 +40,25 @@ func Load() (Config, error) {
 		errs = append(errs, err.Error())
 	}
 	cfg.DatabaseURL = dbURL
+	if cfg.DatabaseURL == "" {
+		errs = append(errs, "DATABASE_URL is required")
+	}
 
 	jwt, err := getSecretEnv("JWT_SECRET")
 	if err != nil {
 		errs = append(errs, err.Error())
 	}
 	cfg.JWTSecret = Secret(jwt)
-
-	if cfg.DatabaseURL == "" {
-		errs = append(errs, "DATABASE_URL is required")
-	}
 	if jwt == "" {
 		errs = append(errs, "JWT_SECRET is required")
 	}
+
+	ttlRaw := getDefault("JWT_ACCESS_TTL", "24h")
+	ttl, err := time.ParseDuration(ttlRaw)
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("JWT_ACCESS_TTL %q is invalid: %v", ttlRaw, err))
+	}
+	cfg.JWTAccessTTL = ttl
 
 	// Stop dev secrets from reaching production.
 	if cfg.Env == "production" {
