@@ -25,6 +25,11 @@ type API struct {
 	ready func(ctx context.Context) error
 }
 
+// Compile-time proof that *API satisfies the generated interface. If a method
+// is missing or has the wrong signature, this line fails to compile and names
+// what's wrong.
+var _ openapi.StrictServerInterface = (*API)(nil)
+
 // GetHealthz success path returns a typed response object and a nil error;
 // the generated strictHandler writes it (200, application/json,
 // {"status":"ok"}). Note the return type is the generated one, not httpx.
