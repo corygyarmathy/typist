@@ -59,7 +59,7 @@ func TestRouter(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.target, nil)
 			rec := httptest.NewRecorder()
 
-			Router(tt.ready).ServeHTTP(rec, req)
+			Router(&API{ready: tt.ready}).ServeHTTP(rec, req)
 
 			if rec.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
