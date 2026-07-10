@@ -2,8 +2,10 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
+	"github.com/corygyarmathy/typist/internal/auth"
 	"github.com/corygyarmathy/typist/internal/openapi"
 	"github.com/corygyarmathy/typist/internal/platform/httpx"
 )
@@ -38,7 +40,18 @@ func Router(api *API) http.Handler {
 					httpx.WriteProblem(w, r, http.StatusNotImplemented, "called handler is not implemented")
 				case errors.Is(err, errNotReady):
 					httpx.WriteProblem(w, r, http.StatusServiceUnavailable, "database is not responsive")
+				case errors.Is(err, auth.ErrEmailTaken):
+					httpx.WriteProblem(w, r, http.StatusConflict, "email already registered")
+				case errors.Is(err, auth.ErrInvalidEmail):
+					httpx.WriteProblem(w, r, http.StatusBadRequest, "email is invalid")
+				case errors.Is(err, auth.ErrPasswordTooShort):
+					httpx.WriteProblem(w, r, http.StatusBadRequest,
+						fmt.Sprintf("password is too short, min chars: %v", auth.MinPasswordLen),
+					)
+				case errors.Is(err, auth.ErrReqBodyEmpty):
+					httpx.WriteProblem(w, r, http.StatusBadRequest, "the request body is empty")
 				default:
+					// TODO: the central handler should slog.Error the raw err on the default branch before writing the opaque response.
 					httpx.WriteProblem(w, r, http.StatusInternalServerError, "unexpected error when calling handler")
 				}
 			},

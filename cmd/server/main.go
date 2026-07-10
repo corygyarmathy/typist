@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/corygyarmathy/typist/internal/auth"
 	"github.com/corygyarmathy/typist/internal/platform/config"
 	"github.com/corygyarmathy/typist/internal/platform/database"
 	"github.com/corygyarmathy/typist/internal/platform/logging"
@@ -68,7 +69,11 @@ func run() error {
 	}
 	slog.Info("database migrations applied")
 
-	api := &API{ready: dbPool.Ping}
+	authn := auth.NewAuthenticator([]byte(cfg.JWTSecret.Reveal()), cfg.JWTAccessTTL)
+	authSvc := auth.NewService(dbPool, newProgressInitialiser, authn)
+	authHandler := auth.NewHandler(authSvc)
+
+	api := &API{ready: dbPool.Ping, auth: authHandler}
 	srv := &http.Server{
 		Addr:              ":8080",
 		Handler:           Router(api),

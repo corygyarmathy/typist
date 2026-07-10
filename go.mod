@@ -9,10 +9,12 @@ go 1.26.4
 //   - github.com/prometheus/client_golang
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/pressly/goose/v3 v3.27.2
+	golang.org/x/crypto v0.52.0
 )
 
 require (
