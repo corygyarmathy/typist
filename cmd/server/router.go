@@ -1,10 +1,10 @@
 package main
 
 import (
-	"context"
+	"errors"
 	"net/http"
-	"time"
 
+	"github.com/corygyarmathy/typist/internal/openapi"
 	"github.com/corygyarmathy/typist/internal/platform/httpx"
 )
 
@@ -25,33 +25,27 @@ func chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler 
 // can import httpx for response/context helpers without an import cycle forming
 // when this function wires their routes in. Dependencies (services) are passed
 // in here, not pulled from globals.
-func Router(ready func(ctx context.Context) error) http.Handler {
+func Router(api *API) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthz)
-	mux.HandleFunc("GET /readyz", readyz(ready))
+
+	si := openapi.NewStrictHandlerWithOptions(
+		api,
+		nil,
+		openapi.StrictHTTPServerOptions{
+			ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+				switch {
+				case errors.Is(err, errNotImplemented):
+					httpx.WriteProblem(w, r, http.StatusNotImplemented, "called handler is not implemented")
+				case errors.Is(err, errNotReady):
+					httpx.WriteProblem(w, r, http.StatusServiceUnavailable, "database is not responsive")
+				default:
+					httpx.WriteProblem(w, r, http.StatusInternalServerError, "unexpected error when calling handler")
+				}
+			},
+		},
+	)
+	handler := openapi.HandlerFromMux(si, mux)
+
 	// Middleware order (outer -> inner): RequestID, Logging, Recovery.
-	return chain(mux, httpx.RequestID, httpx.Logging, httpx.Recovery)
-}
-
-// healthz returns status ok; basic check that the API JSON response writer is
-// functioning.
-func healthz(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
-}
-
-// readyz confirms the database is reachable, returning status ok if the db
-// ping succeeds within 2 seconds.
-func readyz(ready func(context.Context) error) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-
-		// attempt to ping db; return service unavailable if it times out
-		if err := ready(ctx); err != nil {
-			httpx.WriteProblem(w, r, http.StatusServiceUnavailable, "database is not reachable")
-			return
-		}
-
-		httpx.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
-	}
+	return chain(handler, httpx.RequestID, httpx.Logging, httpx.Recovery)
 }

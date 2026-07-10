@@ -68,9 +68,10 @@ func run() error {
 	}
 	slog.Info("database migrations applied")
 
+	api := &API{ready: dbPool.Ping}
 	srv := &http.Server{
 		Addr:              ":8080",
-		Handler:           Router(dbPool.Ping),
+		Handler:           Router(api),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errCh := make(chan error, 1)
