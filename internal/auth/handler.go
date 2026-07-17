@@ -10,10 +10,10 @@ import (
 // HTTP handlers go here. Handlers should be thin:
 //   - parse request (path params, query, body)
 //   - call into the Service
-//   - format response via internal/platform/httpx response helpers
+//   - format response w/ openapi TokenResponse types
 
 type Handler struct {
-	service *Service // you'll define Service next — this is the "pull" to step 5
+	service *Service
 }
 
 func NewHandler(service *Service) *Handler {

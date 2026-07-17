@@ -44,6 +44,10 @@ func NewService(
 
 const MinPasswordLen = 8
 
+// Register takes a RFC 5322 compliant email address, and plaintext password,
+// confirms email and password validity, hashes password, and registers the
+// user to the database in a transaction. A JWT is generated and returned,
+// enabling the user to immediately authenticate.
 func (s *Service) Register(ctx context.Context, email string, password string) (Token, error) {
 	email, err := parseEmail(email)
 	if err != nil {
@@ -105,6 +109,9 @@ func (s *Service) Register(ctx context.Context, email string, password string) (
 	return token, nil
 }
 
+// parseEmail parses a single RFC 5322 address, e.g. "Barry Gibbs <bg@example.com>".
+// Returns trimmed, lowercase email string, sans display name.
+// Returns "", ErrInvalidEmail if it fails to parse.
 func parseEmail(email string) (string, error) {
 	// Trims email, display name
 	addr, err := mail.ParseAddress(email)
