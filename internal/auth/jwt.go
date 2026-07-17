@@ -22,6 +22,7 @@ func NewAuthenticator(secret []byte, ttl time.Duration) *Authenticator {
 	return &Authenticator{secret: secret, ttl: ttl, now: time.Now}
 }
 
+// Issue issues a signed Token (JWT) for the given userID.
 func (a *Authenticator) Issue(userID uuid.UUID) (Token, error) {
 	now := a.now()
 

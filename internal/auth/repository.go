@@ -25,6 +25,7 @@ func newPgxRepository(dbtx db.DBTX) *pgxRepository {
 	return &pgxRepository{q: db.New(dbtx)}
 }
 
+// EmailRegistered confirms if the email address already exists in the database.
 func (r *pgxRepository) EmailRegistered(ctx context.Context, email string) (bool, error) {
 	// call the generated PasswordCredentialExists, passing email as the identifier
 	exists, err := r.q.PasswordCredentialExists(ctx, email)
@@ -35,6 +36,7 @@ func (r *pgxRepository) EmailRegistered(ctx context.Context, email string) (bool
 	return exists, nil
 }
 
+// CreateUser creates the user in the database.
 func (r *pgxRepository) CreateUser(ctx context.Context) (uuid.UUID, error) {
 	id, err := r.q.CreateUser(ctx)
 	if err != nil {
@@ -44,6 +46,7 @@ func (r *pgxRepository) CreateUser(ctx context.Context) (uuid.UUID, error) {
 	return uuid.UUID(id.Bytes), nil
 }
 
+// CreatePasswordCredential creates the user password credential in the database.
 func (r *pgxRepository) CreatePasswordCredential(
 	ctx context.Context,
 	userID uuid.UUID,
