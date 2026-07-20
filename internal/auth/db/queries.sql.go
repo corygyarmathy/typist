@@ -45,6 +45,25 @@ func (q *Queries) CreateUser(ctx context.Context) (pgtype.UUID, error) {
 	return id, err
 }
 
+const getCredentialByIdentifier = `-- name: GetCredentialByIdentifier :one
+SELECT user_id, secret
+  FROM auth_credentials
+  WHERE cred_kind = 'password'
+  AND identifier = $1
+`
+
+type GetCredentialByIdentifierRow struct {
+	UserID pgtype.UUID
+	Secret *string
+}
+
+func (q *Queries) GetCredentialByIdentifier(ctx context.Context, identifier string) (GetCredentialByIdentifierRow, error) {
+	row := q.db.QueryRow(ctx, getCredentialByIdentifier, identifier)
+	var i GetCredentialByIdentifierRow
+	err := row.Scan(&i.UserID, &i.Secret)
+	return i, err
+}
+
 const passwordCredentialExists = `-- name: PasswordCredentialExists :one
 SELECT EXISTS (
 SELECT 1
