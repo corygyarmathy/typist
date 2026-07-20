@@ -47,6 +47,14 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+func newTestService(t *testing.T) (svc *auth.Service, authn *auth.Authenticator, pool *pgxpool.Pool) {
+	t.Helper()
+	pool = newTestPool(t)
+	authn = auth.NewAuthenticator([]byte("test-secret"), time.Hour)
+	svc = auth.NewService(pool, realProgress, authn)
+	return svc, authn, pool
+}
+
 // realProgress mirrors cmd/server's newProgressInitialiser - the production factory.
 func realProgress(tx pgx.Tx) auth.ProgressInitialiser {
 	return progress.NewInitialiser(tx)
@@ -132,5 +140,75 @@ func TestRegister_Integration_RollsBackOnProgressFailure(t *testing.T) {
 		if n != 0 {
 			t.Errorf("expected 0 row in %s table, got %d", table, n)
 		}
+	}
+}
+
+func TestLogin_Integration_HappyPath(t *testing.T) {
+	svc, authn, _ := newTestService(t)
+	ctx := context.Background()
+
+	const email = "alice@example.com"
+	const password = "correct horse battery staple"
+
+	if _, err := svc.Register(ctx, email, password); err != nil {
+		t.Fatalf("register (arrange step) failed: %v", err)
+	}
+
+	token, err := svc.Login(ctx, email, password)
+	if err != nil {
+		t.Fatalf("unexpectedly received error on Login: %v", err)
+	}
+	if token == (auth.Token{}) {
+		t.Fatalf("Login attempt unexpectedly returned empty Token")
+	}
+
+	userID, err := authn.Validate(token.Value)
+	if err != nil {
+		t.Fatalf("unexpectedly received error on Token Validate: %v", err)
+	}
+	if userID == uuid.Nil {
+		t.Fatalf("Validate returned nil userID: %v", userID)
+	}
+}
+
+func TestLogin_Integration_WrongPassword(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+
+	const email = "alice@example.com"
+	const password = "correct horse battery staple"
+	const wrongPassword = "this is the wrong password"
+
+	if _, err := svc.Register(ctx, email, password); err != nil {
+		t.Fatalf("register (arrange step) failed: %v", err)
+	}
+
+	token, err := svc.Login(ctx, email, wrongPassword)
+	if !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Fatalf("received unexpected err. Expected '%v', got '%v'", auth.ErrInvalidCredentials, err)
+	}
+	if token != (auth.Token{}) {
+		t.Fatalf("unexpectedly received non-empty Token")
+	}
+}
+
+func TestLogin_Integration_WrongEmail(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+
+	const email = "alice@example.com"
+	const password = "correct horse battery staple"
+	const wrongEmail = "bob@example.com"
+
+	if _, err := svc.Register(ctx, email, password); err != nil {
+		t.Fatalf("register (arrange step) failed: %v", err)
+	}
+
+	token, err := svc.Login(ctx, wrongEmail, password)
+	if !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Fatalf("received unexpected err. Expected '%v', got '%v'", auth.ErrInvalidCredentials, err)
+	}
+	if token != (auth.Token{}) {
+		t.Fatalf("unexpectedly received non-empty Token")
 	}
 }
