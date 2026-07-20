@@ -71,11 +71,8 @@ func failingProgressFactory(tx pgx.Tx) auth.ProgressInitialiser {
 }
 
 func TestRegister_Integration_HappyPath(t *testing.T) {
-	pool := newTestPool(t)
+	svc, _, pool := newTestService(t)
 	ctx := context.Background()
-
-	authn := auth.NewAuthenticator([]byte("test-secret"), time.Hour)
-	svc := auth.NewService(pool, realProgress, authn)
 
 	tok, err := svc.Register(ctx, "alice@example.com", "correct horse battery staple")
 	if err != nil {
@@ -100,9 +97,8 @@ func TestRegister_Integration_HappyPath(t *testing.T) {
 }
 
 func TestRegister_Integration_DuplicateEmail(t *testing.T) {
-	pool := newTestPool(t)
+	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	svc := auth.NewService(pool, realProgress, auth.NewAuthenticator([]byte("test-secret"), time.Hour))
 
 	tok, err := svc.Register(ctx, "alice@example.com", "correct horse battery staple")
 	if err != nil {
@@ -120,9 +116,13 @@ func TestRegister_Integration_DuplicateEmail(t *testing.T) {
 }
 
 func TestRegister_Integration_RollsBackOnProgressFailure(t *testing.T) {
-	pool := newTestPool(t)
+	_, _, pool := newTestService(t)
 	ctx := context.Background()
-	svc := auth.NewService(pool, failingProgressFactory, auth.NewAuthenticator([]byte("test-secret"), time.Hour))
+	svc := auth.NewService(
+		pool,
+		failingProgressFactory,
+		auth.NewAuthenticator([]byte("test-secret"), time.Hour),
+	)
 
 	_, err := svc.Register(ctx, "alice@example.com", "correct horse battery staple")
 	if err == nil {
