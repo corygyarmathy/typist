@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	CreateCredential(ctx context.Context, arg CreateCredentialParams) error
 	CreateUser(ctx context.Context) (pgtype.UUID, error)
+	GetCredentialByIdentifier(ctx context.Context, identifier string) (GetCredentialByIdentifierRow, error)
 	PasswordCredentialExists(ctx context.Context, identifier string) (bool, error)
 }
 

@@ -109,6 +109,51 @@ func (s *Service) Register(ctx context.Context, email string, password string) (
 	return token, nil
 }
 
+// Login verifies an email/password pair and, on success, issues a JWT.
+// It returns ErrInvalidCredentials for a bad email, an unknown email, and a
+// wrong password alike - and runs a constant-time verify on every path so an
+// unregistered email is indistinguishable from a registered one by timing.
+func (s *Service) Login(ctx context.Context, email string, password string) (Token, error) {
+	// Verify against a real hash if found, else the dummy.
+	hashToCheck := dummyHash
+	var userID uuid.UUID
+	found := false
+
+	// parseEmail may fail (malformed); fall through to the dummy verify rather
+	// than returning early, to keep timing uniform.
+	if parsed, err := parseEmail(email); err == nil {
+		cred, err := s.repo.FindPasswordCredential(ctx, parsed)
+		switch {
+		case err == nil:
+			hashToCheck = cred.PasswordHash
+			userID = cred.UserID
+			found = true
+		case errors.Is(err, errCredentialNotFound):
+			// nothing to do - leave the dummy in place and verify to maintain timings.
+		default:
+			return Token{}, fmt.Errorf("getting password credential from db: %w", err)
+		}
+	}
+
+	verified, err := verifyPassword(password, hashToCheck)
+	if err != nil {
+		// A malformed PHC can only come from a real stored credential (the dummy
+		// is always valid) - so this means corrupt data. Return it (-> 500).
+		return Token{}, fmt.Errorf("verifying password: %w", err)
+	}
+
+	if !found || !verified {
+		return Token{}, ErrInvalidCredentials
+	}
+
+	token, err := s.authenticator.Issue(userID)
+	if err != nil {
+		return Token{}, fmt.Errorf("failed to issue JWT for successful login: %w", err)
+	}
+
+	return token, nil
+}
+
 // parseEmail parses a single RFC 5322 address, e.g. "Barry Gibbs <bg@example.com>".
 // Returns trimmed, lowercase email string, sans display name.
 // Returns "", ErrInvalidEmail if it fails to parse.

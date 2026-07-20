@@ -60,7 +60,7 @@ func (a *API) GetReadyz(
 }
 
 // RegisterUser registers a user: initialising all required objects.
-// Returns a JWT for the user to authenticate (login) with.
+// Returns a JWT for the user to authenticate with.
 func (a *API) RegisterUser(
 	ctx context.Context,
 	req openapi.RegisterUserRequestObject,
@@ -68,12 +68,14 @@ func (a *API) RegisterUser(
 	return a.auth.RegisterUser(ctx, req)
 }
 
-// LoginUser Placeholder logic, not implemented
+// LoginUser logs in a user, assuming they are pre-registered and the correct
+// credentials (email and password) are provided.
+// Returns a JWT for the user to authenticate with.
 func (a *API) LoginUser(
 	ctx context.Context,
-	_ openapi.LoginUserRequestObject,
+	req openapi.LoginUserRequestObject,
 ) (openapi.LoginUserResponseObject, error) {
-	return nil, errNotImplemented
+	return a.auth.LoginUser(ctx, req)
 }
 
 // GetProgress Placeholder logic, not implemented

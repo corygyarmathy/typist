@@ -13,3 +13,9 @@ RETURNING id;
 -- name: CreateCredential :exec
 INSERT INTO auth_credentials (user_id, cred_kind, identifier, secret)
 VALUES ($1, $2, $3, $4);
+
+-- name: GetCredentialByIdentifier :one
+SELECT user_id, secret
+  FROM auth_credentials
+  WHERE cred_kind = 'password'
+  AND identifier = $1;

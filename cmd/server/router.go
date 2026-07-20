@@ -50,6 +50,8 @@ func Router(api *API) http.Handler {
 					)
 				case errors.Is(err, auth.ErrReqBodyEmpty):
 					httpx.WriteProblem(w, r, http.StatusBadRequest, "the request body is empty")
+				case errors.Is(err, auth.ErrInvalidCredentials):
+					httpx.WriteProblem(w, r, http.StatusUnauthorized, "invalid email or password provided")
 				default:
 					// TODO: the central handler should slog.Error the raw err on the default branch before writing the opaque response.
 					httpx.WriteProblem(w, r, http.StatusInternalServerError, "unexpected error when calling handler")
