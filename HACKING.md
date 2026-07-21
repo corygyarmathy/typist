@@ -10,6 +10,34 @@ boundary). This file is the _how_, and is expected to change without an ADR as
 jobs and settings evolve. Build, test, and codegen commands live in
 [`AGENTS.md`](/AGENTS.md#commands).
 
+## Running locally
+
+Two ways to run the stack, for two audiences.
+
+**Inner loop — native, Nix-backed.** The app runs on the host through the
+`nix develop` shell (auto-loaded by direnv). Postgres is a throwaway Nix-native
+cluster under `.pgdata/` — no Docker daemon, and rebuilds cost the ~1s Go
+incremental compile rather than a full image build.
+
+```bash
+make db-up      # once: initialises .pgdata/ and starts Postgres on :5432
+make watch      # go run with live reload — rebuilds on save (needs wgo, in the shell)
+# make run      # same, without the file watcher
+make db-down    # stop Postgres; data in .pgdata/ survives
+# make db-reset # stop and wipe .pgdata/ for a clean cluster
+```
+
+Migrations apply automatically on server start, so there's no separate step in
+the loop. The dev shell exports `DATABASE_URL` and a placeholder `JWT_SECRET`
+(rejected under `APP_ENV=production`); `.pgdata/` is gitignored.
+
+**Reviewer / clean-room — Docker.** `make docker-up` builds the app image and
+starts app + Postgres via `deploy/docker/compose.yaml` — the "clone the repo,
+run one command, nothing else installed" path. It rebuilds the image on each run,
+so it's the demo path, not the edit loop.
+
+Both bind `:5432`; don't run `make db-up` and `make docker-up` at the same time.
+
 ## Everyday change flow
 
 Every change - however trivial - lands on `main` through a branch and a pull

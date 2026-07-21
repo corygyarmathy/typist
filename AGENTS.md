@@ -33,6 +33,7 @@ Use `nix develop` for a reproducible shell with all tools, or ensure Go 1.26+, `
 
 ```bash
 make run           # run the server (go run ./cmd/server)
+make watch         # run the server with live reload (wgo run ./cmd/server)
 make test          # go test -race -cover ./...
 make lint          # golangci-lint run ./...
 make fmt           # gofmt -w . && go mod tidy
@@ -50,7 +51,12 @@ make migrate-up                        # apply all pending
 make migrate-down                      # roll back one
 make migrate-new name=add_sessions     # create a new migration
 
-# Local dev stack
+# Local Postgres — Nix-native cluster in .pgdata/ (the inner-loop DB)
+make db-up         # init .pgdata/ on first run, start Postgres on :5432
+make db-down       # stop Postgres (data in .pgdata/ survives)
+make db-reset      # stop and wipe .pgdata/ for a clean cluster
+
+# Docker dev stack — app + postgres, the clone-and-run reviewer path
 make docker-up     # starts app + postgres via deploy/docker/compose.yaml
 make docker-down
 ```

@@ -27,6 +27,7 @@
             gotools
             golangci-lint
             govulncheck
+            wgo # file-watch live reload for `make watch`
 
             # Database tools
             goose
@@ -42,6 +43,8 @@
 
           shellHook = ''
             export DATABASE_URL="postgres://typing:typing@localhost:5432/typing?sslmode=disable"
+            # Dev-only placeholder; config.go's prod guard rejects it when APP_ENV=production.
+            export JWT_SECRET="dev-only-change-me"
             export GOFLAGS="-mod=readonly"
             echo "typist dev shell"
             echo "  go:        $(go version | cut -d' ' -f3)"
