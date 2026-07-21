@@ -1,0 +1,24 @@
+info:
+  name: Get Progress
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/progress"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Return the user's current competency state. 200 with the (provisional)
+  competency JSON, 401 if unauthenticated.
+
+  Sends Authorization: Bearer {{token}}. Run Login or Register first to populate
+  the token; otherwise this returns 401.

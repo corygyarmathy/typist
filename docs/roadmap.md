@@ -70,6 +70,7 @@ Multi-stage Dockerfile, compose with seeded dev placeholders, verify the README 
 - **Phase 8** - SSH surface: wish, pubkey auth, anonymous fallback, the internal token-exchange endpoint + service credential ([ADR 0008](adr/0008-ssh-public-key-authentication.md), [0016](adr/0016-asymmetric-jwt-signing.md)).
 - **Phase 9** - Refresh tokens ([ADR 0015](adr/0015-access-and-refresh-tokens.md)), the anonymous / offline local-file engine ([ADR 0014](adr/0014-engine-as-library-state-follows-identity.md)), trigrams.
 - **Phase 10** - Demo polish: asciinema / gif, README, metrics dashboard.
+- **Spec-conformance testing** (once the phase-4 surface is real) - validate live request/response bodies against `api/openapi.yaml` at runtime, so behaviour cannot drift from the contract the way the generated _types_ already cannot (enforced by the `codegen` CI job). Prefer the in-ecosystem path: enable `embedded-spec` in `api/oapi-codegen.yaml` to get `GetSwagger()` (a `kin-openapi` document), then assert conformance inside the existing `go test` - no new language or CI service. An external spec-fuzzer (Schemathesis / Dredd) is the heavier alternative if property-based negative testing is wanted later.
 
 ## Sequencing notes
 

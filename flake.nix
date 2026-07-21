@@ -34,8 +34,9 @@
             sqlc
             postgresql_18
 
-            # Auth tools
+            # API tools
             oapi-codegen
+            bruno-cli
 
             # TUI dev tools
             asciinema

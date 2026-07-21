@@ -1,0 +1,49 @@
+info:
+  name: Register
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/auth/register"
+  auth:
+    type: none
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "email": "{{userEmail}}",
+        "password": "{{userPassword}}"
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        // On success the server issues a JWT (TokenResponse.token). Capture it
+        // into the environment so every bearer-authenticated request picks it up
+        // via {{token}} - no copy/paste of the token between requests.
+        if (res.status === 200) {
+          bru.setEnvVar("token", res.body.token);
+        }
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.token_type
+      operator: eq
+      value: Bearer
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Register a new user. 200 issues a JWT, 400 on malformed request, 409 if the
+  email is already registered. Public endpoint (no auth). Re-running with the
+  same email returns 409 - change userEmail in the environment, or use Login.
