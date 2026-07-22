@@ -41,3 +41,6 @@ go.work.sum
 
 # Nix
 .direnv/
+
+# Local Nix-native Postgres cluster (make db-up)
+/.pgdata/
