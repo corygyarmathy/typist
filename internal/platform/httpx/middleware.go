@@ -1,9 +1,9 @@
 // The middleware here is composed by cmd/server (see Router). RequestID must be
 // outermost so every request — including ones that error or panic further in —
 // carries an ID for log correlation; Logging sits inside it to read that ID
-// back, and Recovery innermost to catch panics from the real handlers.
-// TODO(phase-5): Auth (JWT validation, user context injection), mounted on
-// protected routes only.
+// back, and Recovery innermost to catch panics from the real handlers. Auth
+// (JWT validation + user-context injection) is wired separately in cmd/server
+// as an oapi middleware, so it can read the generated per-route security marker.
 
 package httpx
 
@@ -21,6 +21,20 @@ const (
 	// can't bloat every log line for the request.
 	maxRequestIDLen = 128
 )
+
+// MaxBytes returns middleware that caps each request body at n bytes. Reading
+// past the limit makes the body return an error, which downstream JSON decoding
+// surfaces as a 400 - so a client can't stream an unbounded body into memory.
+// The current API bodies are small JSON documents; n is a generous ceiling, not
+// a tight per-route limit (routes can tighten it later if needed).
+func MaxBytes(n int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, n)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 
 // RequestID is middleware that generates X-Request-Id if absent, stores into
 // request context. Outermost middleware to ensure all requests have an ID so

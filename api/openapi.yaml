@@ -192,11 +192,12 @@ components:
           type: string
           description: Email string.
           format: email
+          maxLength: 254 # RFC 5321 addr-spec limit
         password:
           type: string
           description: Plaintext password string.
           minLength: 8
-          maxLength: 100
+          maxLength: 128
     LoginRequest:
       type: object
       description: Login request.
@@ -208,11 +209,12 @@ components:
           type: string
           description: Email string.
           format: email
+          maxLength: 254 # RFC 5321 addr-spec limit
         password:
           type: string
           description: Plaintext password string.
           minLength: 8
-          maxLength: 100
+          maxLength: 128
     TokenResponse:
       type: object
       description: JWT response, issued on successful register or login.

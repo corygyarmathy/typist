@@ -27,22 +27,34 @@ type Service struct {
 	pool          *pgxpool.Pool
 	newProgress   func(tx pgx.Tx) ProgressInitialiser
 	authenticator *Authenticator
+	hasher        *Hasher
 }
 
 func NewService(
 	pool *pgxpool.Pool,
 	newProgress func(tx pgx.Tx) ProgressInitialiser,
 	authenticator *Authenticator,
+	hasher *Hasher,
 ) *Service {
 	return &Service{
 		repo:          newPgxRepository(pool),
 		pool:          pool,
 		newProgress:   newProgress,
 		authenticator: authenticator,
+		hasher:        hasher,
 	}
 }
 
-const MinPasswordLen = 8
+const (
+	// MinPasswordLen is the floor per NIST SP 800-63B; MaxPasswordLen is a sanity
+	// bound well above the ~64-char passphrases the guidance says to allow, so a
+	// client can't hand us an unbounded string to hash.
+	MinPasswordLen = 8
+	MaxPasswordLen = 128
+
+	// MaxEmailLen is the RFC 5321 addr-spec limit.
+	MaxEmailLen = 254
+)
 
 // Register takes a RFC 5322 compliant email address, and plaintext password,
 // confirms email and password validity, hashes password, and registers the
@@ -54,8 +66,12 @@ func (s *Service) Register(ctx context.Context, email string, password string) (
 		return Token{}, err
 	}
 	// counts characters, rather than bytes (as len() does)
-	if utf8.RuneCountInString(password) < MinPasswordLen {
+	pwLen := utf8.RuneCountInString(password)
+	if pwLen < MinPasswordLen {
 		return Token{}, ErrPasswordTooShort
+	}
+	if pwLen > MaxPasswordLen {
+		return Token{}, ErrPasswordTooLong
 	}
 
 	exists, err := s.repo.EmailRegistered(ctx, email)
@@ -66,7 +82,7 @@ func (s *Service) Register(ctx context.Context, email string, password string) (
 		return Token{}, ErrEmailTaken
 	}
 
-	hash, err := hashPassword(password)
+	hash, err := s.hasher.Hash(ctx, password)
 	if err != nil {
 		return Token{}, fmt.Errorf("hashing password: %w", err)
 	}
@@ -115,7 +131,7 @@ func (s *Service) Register(ctx context.Context, email string, password string) (
 // unregistered email is indistinguishable from a registered one by timing.
 func (s *Service) Login(ctx context.Context, email string, password string) (Token, error) {
 	// Verify against a real hash if found, else the dummy.
-	hashToCheck := dummyHash
+	hashToCheck := s.hasher.dummyHash
 	var userID uuid.UUID
 	found := false
 
@@ -135,7 +151,7 @@ func (s *Service) Login(ctx context.Context, email string, password string) (Tok
 		}
 	}
 
-	verified, err := verifyPassword(password, hashToCheck)
+	verified, err := s.hasher.Verify(ctx, password, hashToCheck)
 	if err != nil {
 		// A malformed PHC can only come from a real stored credential (the dummy
 		// is always valid) - so this means corrupt data. Return it (-> 500).
@@ -161,6 +177,9 @@ func parseEmail(email string) (string, error) {
 	// Trims email, display name
 	addr, err := mail.ParseAddress(email)
 	if err != nil {
+		return "", ErrInvalidEmail
+	}
+	if len(addr.Address) > MaxEmailLen {
 		return "", ErrInvalidEmail
 	}
 	return strings.ToLower(addr.Address), nil

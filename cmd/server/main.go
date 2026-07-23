@@ -36,8 +36,6 @@ func main() {
 
 func run() error {
 	// TODO(phase-3): construct adaptive engine
-	// TODO(phase-4): construct repositories, services, handlers
-	// TODO(phase-5): wire auth middleware
 	// TODO(phase-6): expose /metrics
 
 	ctx, stop := signal.NotifyContext(
@@ -71,7 +69,11 @@ func run() error {
 	slog.Info("database migrations applied")
 
 	authn := auth.NewAuthenticator([]byte(cfg.JWTSecret.Reveal()), cfg.JWTAccessTTL)
-	authSvc := auth.NewService(dbPool, newProgressInitialiser, authn)
+	hasher, err := auth.NewHasher(cfg.Argon2MaxParallel)
+	if err != nil {
+		return err
+	}
+	authSvc := auth.NewService(dbPool, newProgressInitialiser, authn, hasher)
 	authHandler := auth.NewHandler(authSvc)
 
 	progressSvc := progress.NewService(dbPool)

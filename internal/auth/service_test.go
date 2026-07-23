@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +50,18 @@ func TestRegister_GuardClauses(t *testing.T) {
 			fake:     &fakeRepo{},
 			wantErr:  ErrPasswordTooShort,
 		},
+		"too-long password": {
+			email:    "valid@email.com",
+			password: strings.Repeat("a", MaxPasswordLen+1),
+			fake:     &fakeRepo{},
+			wantErr:  ErrPasswordTooLong,
+		},
+		"over-length email": {
+			email:    strings.Repeat("a", MaxEmailLen) + "@example.com",
+			password: "correct horse battery staple",
+			fake:     &fakeRepo{},
+			wantErr:  ErrInvalidEmail,
+		},
 		"duplicate email": {
 			email:    "valid@email.com",
 			password: "correct horse battery staple",
@@ -83,6 +96,11 @@ func TestLogin(t *testing.T) {
 	knownHash, err := hashPassword(realPassword)
 	if err != nil {
 		t.Fatalf("setting up known hash: %v", err)
+	}
+
+	hasher, err := NewHasher(2)
+	if err != nil {
+		t.Fatalf("setting up hasher: %v", err)
 	}
 	// The credential as it would come back from the DB for a registered user.
 	knownCred := PasswordCredential{UserID: uuid.New(), PasswordHash: knownHash}
@@ -130,6 +148,7 @@ func TestLogin(t *testing.T) {
 			s := &Service{
 				repo:          tc.fake,
 				authenticator: NewAuthenticator([]byte("test-secret"), time.Hour),
+				hasher:        hasher,
 			}
 
 			token, err := s.Login(context.Background(), tc.email, tc.password)

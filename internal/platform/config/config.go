@@ -7,6 +7,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,6 +24,12 @@ type Config struct {
 	JWTAccessTTL time.Duration
 	LogLevel     string
 	Env          string // "development" | "production"
+
+	// Argon2MaxParallel bounds concurrent argon2id hashes. Each costs ~64 MiB,
+	// so this caps peak hashing memory at roughly Argon2MaxParallel * 64 MiB;
+	// excess register/login requests queue instead of allocating all at once.
+	// Defaults to the CPU count; tune down on a memory-constrained host.
+	Argon2MaxParallel int
 }
 
 // Load reads configuration from the process environment.
@@ -59,6 +67,16 @@ func Load() (Config, error) {
 		errs = append(errs, fmt.Sprintf("JWT_ACCESS_TTL %q is invalid: %v", ttlRaw, err))
 	}
 	cfg.JWTAccessTTL = ttl
+
+	cfg.Argon2MaxParallel = runtime.NumCPU()
+	if v := os.Getenv("ARGON2_MAX_PARALLEL"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			errs = append(errs, fmt.Sprintf("ARGON2_MAX_PARALLEL %q is invalid (want a positive integer)", v))
+		} else {
+			cfg.Argon2MaxParallel = n
+		}
+	}
 
 	// Stop dev secrets from reaching production.
 	if cfg.Env == "production" {
