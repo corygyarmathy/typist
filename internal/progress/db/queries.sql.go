@@ -25,3 +25,16 @@ func (q *Queries) CreateUserProgress(ctx context.Context, arg CreateUserProgress
 	_, err := q.db.Exec(ctx, createUserProgress, arg.UserID, arg.Competency)
 	return err
 }
+
+const getUserProgress = `-- name: GetUserProgress :one
+SELECT competency
+FROM user_progress
+WHERE user_id = $1
+`
+
+func (q *Queries) GetUserProgress(ctx context.Context, userID pgtype.UUID) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getUserProgress, userID)
+	var competency []byte
+	err := row.Scan(&competency)
+	return competency, err
+}

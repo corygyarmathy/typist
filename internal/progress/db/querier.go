@@ -6,10 +6,13 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	CreateUserProgress(ctx context.Context, arg CreateUserProgressParams) error
+	GetUserProgress(ctx context.Context, userID pgtype.UUID) ([]byte, error)
 }
 
 var _ Querier = (*Queries)(nil)
