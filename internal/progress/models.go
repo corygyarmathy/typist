@@ -9,4 +9,6 @@
 //	models.go       - domain types shared across the layers
 package progress
 
-// TODO: domain types live here.
+import "errors"
+
+var ErrProgressNotFound = errors.New("user progress not found in database") // -> 500 (default)
