@@ -24,6 +24,7 @@ import (
 	"github.com/corygyarmathy/typist/internal/platform/config"
 	"github.com/corygyarmathy/typist/internal/platform/database"
 	"github.com/corygyarmathy/typist/internal/platform/logging"
+	"github.com/corygyarmathy/typist/internal/progress"
 )
 
 func main() {
@@ -73,10 +74,13 @@ func run() error {
 	authSvc := auth.NewService(dbPool, newProgressInitialiser, authn)
 	authHandler := auth.NewHandler(authSvc)
 
-	api := &API{ready: dbPool.Ping, auth: authHandler}
+	progressSvc := progress.NewService(dbPool)
+	progressHandler := progress.NewHandler(progressSvc)
+
+	api := &API{ready: dbPool.Ping, auth: authHandler, progress: progressHandler}
 	srv := &http.Server{
 		Addr:              ":8080",
-		Handler:           Router(api),
+		Handler:           Router(api, authn),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errCh := make(chan error, 1)

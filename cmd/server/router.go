@@ -27,7 +27,7 @@ func chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler 
 // can import httpx for response/context helpers without an import cycle forming
 // when this function wires their routes in. Dependencies (services) are passed
 // in here, not pulled from globals.
-func Router(api *API) http.Handler {
+func Router(api *API, v auth.Validator) http.Handler {
 	mux := http.NewServeMux()
 
 	si := openapi.NewStrictHandlerWithOptions(
@@ -59,7 +59,12 @@ func Router(api *API) http.Handler {
 			},
 		},
 	)
-	handler := openapi.HandlerFromMux(si, mux)
+	handler := openapi.HandlerWithOptions(
+		si,
+		openapi.StdHTTPServerOptions{
+			BaseRouter:  mux,
+			Middlewares: []openapi.MiddlewareFunc{auth.RequireAuth(v)},
+		})
 
 	// Middleware order (outer -> inner): RequestID, Logging, Recovery.
 	return chain(handler, httpx.RequestID, httpx.Logging, httpx.Recovery)

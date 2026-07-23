@@ -5,7 +5,13 @@ import (
 	"errors"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
 )
+
+type noopValidator struct{}
+
+func (noopValidator) Validate(string) (uuid.UUID, error) { return uuid.Nil, nil }
 
 func TestRouter(t *testing.T) {
 	readyOK := func(context.Context) error { return nil }
@@ -59,7 +65,7 @@ func TestRouter(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.target, nil)
 			rec := httptest.NewRecorder()
 
-			Router(&API{ready: tt.ready}).ServeHTTP(rec, req)
+			Router(&API{ready: tt.ready}, noopValidator{}).ServeHTTP(rec, req)
 
 			if rec.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
