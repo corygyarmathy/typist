@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/corygyarmathy/typist/internal/openapi"
 	"github.com/corygyarmathy/typist/internal/platform/database"
 	"github.com/corygyarmathy/typist/internal/progress"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -39,13 +41,31 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("failed to apply database migrations: %v", err)
 	}
 
-	// Reset database rows to clean slate for testing
-	_, err = pool.Exec(ctx, "TRUNCATE users, auth_credentials, user_progress RESTART IDENTITY CASCADE")
-	if err != nil {
-		t.Fatalf("failed to truncate database rows: %v", err)
-	}
-
 	return pool
+}
+
+// uniqueEmail returns an email unique to this test run. DB-backed tests isolate
+// on it instead of a global TRUNCATE: this package and internal/auth run as
+// separate test binaries in parallel against the same tables, so a shared
+// TRUNCATE would clobber each other's rows. The UUID also survives repeated
+// -count runs against a persistent dev database.
+func uniqueEmail(t *testing.T) string {
+	t.Helper()
+	return fmt.Sprintf("test-%s@example.test", uuid.NewString())
+}
+
+// cleanupUser deletes the user behind email when the test finishes, cascading
+// to their credential and progress rows, so a persistent dev DB stays tidy.
+func cleanupUser(t *testing.T, pool *pgxpool.Pool, email string) {
+	t.Helper()
+	t.Cleanup(func() {
+		_, err := pool.Exec(context.Background(),
+			`DELETE FROM users WHERE id IN
+			   (SELECT user_id FROM auth_credentials WHERE identifier = $1)`, email)
+		if err != nil {
+			t.Errorf("cleanup: deleting user for %s: %v", email, err)
+		}
+	})
 }
 
 func TestE2E_RegisterLoginProgress(t *testing.T) {
@@ -53,7 +73,11 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 
 	// Build the main wiring main.go builds
 	authn := auth.NewAuthenticator([]byte("test-secret"), time.Hour)
-	authSvc := auth.NewService(pool, newProgressInitialiser, authn)
+	hasher, err := auth.NewHasher(2)
+	if err != nil {
+		t.Fatalf("failed to build hasher: %v", err)
+	}
+	authSvc := auth.NewService(pool, newProgressInitialiser, authn, hasher)
 	progressSvc := progress.NewService(pool)
 	api := &API{
 		ready:    pool.Ping,
@@ -73,9 +97,12 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 		return rec
 	}
 
+	email := uniqueEmail(t)
+	cleanupUser(t, pool, email)
+	body := fmt.Sprintf(`{"email":%q,"password":"correct horse battery staple"}`, email)
+
 	// 1. Register -> 200; decode TokenResponse; token non-empty
-	registerBody := `{"email":"alice@example.com","password":"correct horse battery staple"}`
-	rec := do(http.MethodPost, "/auth/register", registerBody, "") // no token yet
+	rec := do(http.MethodPost, "/auth/register", body, "") // no token yet
 	if rec.Code != http.StatusOK {
 		t.Fatalf("register: status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
 	}
@@ -89,8 +116,7 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 	}
 
 	// 2. Login   -> 200; decode; token non-empty
-	loginBody := `{"email":"alice@example.com","password":"correct horse battery staple"}`
-	rec = do(http.MethodPost, "/auth/login", loginBody, "") // no token yet
+	rec = do(http.MethodPost, "/auth/login", body, "") // same credentials, no token yet
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login: status = %d, want %v (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
 	}
