@@ -3,12 +3,18 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/corygyarmathy/typist/internal/auth"
 	"github.com/corygyarmathy/typist/internal/openapi"
 	"github.com/corygyarmathy/typist/internal/platform/httpx"
 )
+
+// maxRequestBodyBytes caps every request body. The current JSON bodies are a
+// few hundred bytes; this is a generous process-wide ceiling to stop an
+// unbounded body from being read into memory, not a per-route limit.
+const maxRequestBodyBytes = 1 << 20 // 1 MiB
 
 // chain avoids having to nest each middleware handler, increases readability.
 //
@@ -48,12 +54,23 @@ func Router(api *API, v auth.Validator) http.Handler {
 					httpx.WriteProblem(w, r, http.StatusBadRequest,
 						fmt.Sprintf("password is too short, min chars: %v", auth.MinPasswordLen),
 					)
+				case errors.Is(err, auth.ErrPasswordTooLong):
+					httpx.WriteProblem(w, r, http.StatusBadRequest,
+						fmt.Sprintf("password is too long, max chars: %v", auth.MaxPasswordLen),
+					)
 				case errors.Is(err, auth.ErrReqBodyEmpty):
 					httpx.WriteProblem(w, r, http.StatusBadRequest, "the request body is empty")
 				case errors.Is(err, auth.ErrInvalidCredentials):
 					httpx.WriteProblem(w, r, http.StatusUnauthorized, "invalid email or password provided")
 				default:
-					// TODO: the central handler should slog.Error the raw err on the default branch before writing the opaque response.
+					// Unmapped error: log the real cause (correlated by request ID)
+					// before returning an opaque 500, so the detail isn't lost.
+					slog.Error("unhandled error from handler",
+						"err", err,
+						"request_id", httpx.RequestIDFromContext(r.Context()),
+						"method", r.Method,
+						"path", r.URL.Path,
+					)
 					httpx.WriteProblem(w, r, http.StatusInternalServerError, "unexpected error when calling handler")
 				}
 			},
@@ -66,6 +83,8 @@ func Router(api *API, v auth.Validator) http.Handler {
 			Middlewares: []openapi.MiddlewareFunc{auth.RequireAuth(v)},
 		})
 
-	// Middleware order (outer -> inner): RequestID, Logging, Recovery.
-	return chain(handler, httpx.RequestID, httpx.Logging, httpx.Recovery)
+	// Middleware order (outer -> inner): RequestID, Logging, Recovery, MaxBytes.
+	// MaxBytes is innermost so the body cap applies just before the handler
+	// reads it, while the request is still logged and panic-guarded.
+	return chain(handler, httpx.RequestID, httpx.Logging, httpx.Recovery, httpx.MaxBytes(maxRequestBodyBytes))
 }

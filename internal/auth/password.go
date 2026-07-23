@@ -24,21 +24,6 @@ const (
 	upperThr  = 8
 )
 
-// dummyHash is a valid argon2id PHC string over a throwaway password. Login
-// verifies against it when an email is unknown so that the unregistered path
-// costs the same wall-clock time as a real verify.
-var dummyHash = mustHashPassword("dummy-password-defeats-timing-oracle")
-
-// mustHashPassword computes dummy hash on startup, panics if fails.
-// Automatically tracks PHC parameters.
-func mustHashPassword(plain string) string {
-	h, err := hashPassword(plain)
-	if err != nil {
-		panic(fmt.Sprintf("auth: precomputing dummy hash: %v", err)) // crypto/rand failing at init is fatal anyway
-	}
-	return h
-}
-
 // hashPassword hashes and salts plan using argon2id and the constants defined
 // above. It constructs and returns a PHC string. Errors are theoretically
 // impossible, but handled rather than returning an improper hash.

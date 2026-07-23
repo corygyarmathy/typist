@@ -28,6 +28,7 @@ type PasswordCredential struct {
 }
 
 var ErrPasswordTooShort = errors.New("password length is too short") // -> 400
+var ErrPasswordTooLong = errors.New("password length is too long")   // -> 400
 var ErrInvalidEmail = errors.New("provided email is invalid")        // -> 400
 var ErrEmailTaken = errors.New("provided email is already taken")    // -> 409
 var ErrReqBodyEmpty = errors.New("request body is empty")            // -> 400
