@@ -1,0 +1,17 @@
+# Homelab deployment environment (server url from openapi.yaml).
+#
+# NOTE: best-effort env-file shape (the OpenCollection env format is undocumented
+# publicly). If Bruno does not pick it up, recreate via the Bruno UI.
+#
+# Credentials are intentionally blank - fill them in the Bruno UI so real ones
+# stay out of git. token is secret, set at runtime by the after-response script.
+variables:
+  - name: baseUrl
+    value: https://typist.gyarmathy.co
+  - name: userEmail
+    value: ""
+  - name: userPassword
+    value: ""
+  - name: token
+    value: ""
+    secret: true

@@ -55,6 +55,13 @@ Without Nix you'll need Go 1.26+, `goose`, `sqlc`, `oapi-codegen`, and
 `golangci-lint` on your `$PATH`. The Docker stack still works without
 any of these.
 
+### Making API requests by hand
+
+[`api/bruno/`](api/bruno) is a [Bruno](https://www.usebruno.com/) collection
+for exploring the API interactively — log in once and the JWT is captured for
+subsequent requests. Open the folder in Bruno and pick the `Local` environment.
+See [`api/bruno/README.md`](api/bruno/README.md) for the workflow.
+
 ## Architecture (TL;DR)
 
 A Go modular monolith exposing a REST API consumed by a Bubble Tea TUI
