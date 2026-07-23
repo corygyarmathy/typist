@@ -1,4 +1,4 @@
-# Typist API — Bruno collection
+# Typist API - Bruno collection
 
 A hand-curated [Bruno](https://www.usebruno.com/) collection for exploring the
 Typist API by hand. Requests are stored as OpenCollection YAML (`.yml`) files,
@@ -17,7 +17,7 @@ protected endpoint, **Progress / Get Progress**, sends a bearer token:
 1. Send **Auth / Register** (first time) or **Auth / Login** (thereafter).
 2. Its `after-response` script writes the returned JWT into the `token`
    environment variable via `bru.setEnvVar("token", res.body.token)`.
-3. **Get Progress** sends `Authorization: Bearer {{token}}` automatically — no
+3. **Get Progress** sends `Authorization: Bearer {{token}}` automatically - no
    copy/paste.
 
 `token` is flagged secret, so its value is not committed. `userEmail` /
@@ -27,7 +27,7 @@ protected endpoint, **Progress / Get Progress**, sends a bearer token:
 
 This collection deliberately covers only the flows you poke by hand. It is
 **not** a mirror of `api/openapi.yaml`, and it is not the thing that keeps the
-server honest against the spec — that job belongs to spec-driven checks that
+server honest against the spec - that job belongs to spec-driven checks that
 read `openapi.yaml` directly (the `codegen` CI job already pins the generated
 server types to the spec). Keeping this collection small means drift here is
 low-stakes and obvious: a stale request simply 404s while you are clicking.
@@ -40,7 +40,7 @@ only if it is a flow you actually want to exercise by hand.
 - Request files follow the OpenCollection YAML structure reference. Auth lives
   under the `http` block; scripts use `type: after-response`; declarative
   checks use the `runtime.assertions` block.
-- The environment file shape (`environments/*.yml`) is a best-effort guess —
+- The environment file shape (`environments/*.yml`) is a best-effort guess -
   the OpenCollection env format is not documented publicly yet. If Bruno does
   not load them, recreate the environment once via the Bruno UI
   (Configure -> Environments) and it will rewrite the file correctly.
