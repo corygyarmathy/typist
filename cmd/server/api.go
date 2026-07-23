@@ -7,6 +7,7 @@ import (
 
 	"github.com/corygyarmathy/typist/internal/auth"
 	"github.com/corygyarmathy/typist/internal/openapi"
+	"github.com/corygyarmathy/typist/internal/progress"
 )
 
 // Sentinels the composition-root error handler maps to HTTP statuses.
@@ -23,8 +24,9 @@ var (
 // satisfies StrictServerInterface, and will delegate each op to the
 // right context's handler. For now the domain ops are stubbed.
 type API struct {
-	ready func(ctx context.Context) error
-	auth  *auth.Handler
+	ready    func(ctx context.Context) error
+	auth     *auth.Handler
+	progress *progress.Handler
 }
 
 // Compile-time proof that *API satisfies the generated interface. If a method
@@ -78,10 +80,11 @@ func (a *API) LoginUser(
 	return a.auth.LoginUser(ctx, req)
 }
 
-// GetProgress Placeholder logic, not implemented
+// GetProgress gets the user progress (Competency) record. Obtains the user ID
+// from the request context. Returns the user progress record.
 func (a *API) GetProgress(
 	ctx context.Context,
-	_ openapi.GetProgressRequestObject,
+	req openapi.GetProgressRequestObject,
 ) (openapi.GetProgressResponseObject, error) {
-	return nil, errNotImplemented
+	return a.progress.GetProgress(ctx, req)
 }
