@@ -47,6 +47,9 @@
             # Dev-only placeholder; config.go's prod guard rejects it when APP_ENV=production.
             export JWT_SECRET="dev-only-change-me"
             export GOFLAGS="-mod=readonly"
+            # The flake's go_1_26 is the only toolchain; fail loudly rather than
+            # silently downloading one if go.mod ever outruns nixpkgs.
+            export GOTOOLCHAIN="local"
             echo "typist dev shell"
             echo "  go:        $(go version | cut -d' ' -f3)"
             echo "  goose:     $(goose --version 2>&1 | head -1)"
