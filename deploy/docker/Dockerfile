@@ -10,6 +10,11 @@
 FROM golang:1.26-alpine AS builder
 WORKDIR /src
 
+# The base image's Go is the only toolchain the build may use. The official
+# golang images already default to this; setting it explicitly keeps the
+# guarantee if the base image is ever swapped, and matches flake.nix and CI.
+ENV GOTOOLCHAIN=local
+
 # Cache dependencies separately from source for faster rebuilds.
 COPY go.mod go.sum* ./
 RUN go mod download
