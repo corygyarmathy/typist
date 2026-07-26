@@ -233,27 +233,37 @@ type Corpus interface {
 
 ## Tunable constants
 
-Keep these in one block so they are easy to find, tune, and explain.
+Keep these in one block so they are easy to find, tune, and explain. The
+`Constant` column is the Go identifier as declared in `internal/adaptive/engine.go`.
 
-| Constant                 | Default | Meaning                                       |
-| ------------------------ | ------- | --------------------------------------------- |
-| `W_ACCURACY`             | 0.7     | weight of accuracy in instant score           |
-| `W_SPEED`                | 0.3     | weight of speed in instant score              |
-| `ALPHA`                  | 0.3     | EMA smoothing; higher = more reactive         |
-| `TAU`                    | 7 days  | recency decay time constant                   |
-| `UNLOCK_KEY_THRESHOLD`   | 0.85    | min decayed score on all keys to unlock next  |
-| `UNLOCK_NGRAM_THRESHOLD` | 0.80    | min decayed score on active ngrams to advance |
-| `MIN_SAMPLES`            | 50      | confidence gate before any unlock             |
-| `PHASE_THRESHOLD`        | 0.75    | mean key score to enter ngram-focus phase     |
-| `STARTING_KEYS`          | 4       | size of the initial unlocked set              |
-| `STARTING_TARGET_WPM`    | 40      | initial target speed; held until the alphabet unlocks |
-| `TARGET_RAISE_SCORE`     | 0.85    | mean key decayed score needed to raise the target |
-| `TARGET_WPM_STEP`        | 5       | WPM added per target raise                     |
-| `LAMBDA_KEY`             | 3.0     | weak-key boost in generation                  |
-| `LAMBDA_NGRAM`           | 0.5→3.0 | weak-ngram boost; phase-scaled                |
-| `LESSON_WORDS`           | 10-15   | words per generated lesson                    |
+| Constant               | Default | Meaning                                               |
+| ---------------------- | ------- | ----------------------------------------------------- |
+| `wAccuracy`            | 0.7     | weight of accuracy in instant score                   |
+| `wSpeed`               | 0.3     | weight of speed in instant score                      |
+| `alpha`                | 0.3     | EMA smoothing; higher = more reactive                 |
+| `decayTau`             | 7 days  | recency decay time constant                           |
+| `unlockKeyThreshold`   | 0.85    | min decayed score on all keys to unlock next          |
+| `unlockNgramThreshold` | 0.80    | min decayed score on active ngrams to advance         |
+| `minSamples`           | 50      | confidence gate before any unlock                     |
+| `phaseThreshold`       | 0.75    | mean key score to enter ngram-focus phase             |
+| `startingKeys`         | 4       | size of the initial unlocked set                      |
+| `startingTargetWPM`    | 40      | initial target speed; held until the alphabet unlocks |
+| `targetRaiseScore`     | 0.85    | mean key decayed score needed to raise the target     |
+| `targetWPMStep`        | 5       | WPM added per target raise                            |
+| `lambdaKey`            | 3.0     | weak-key boost in generation                          |
+| `lambdaNgram`          | 0.5→3.0 | weak-ngram boost; phase-scaled                        |
+| `lessonWords`          | 10-15   | words per generated lesson                            |
 
 These are guesses, not gospel. Tune them against simulated users (below).
+
+> **A note on notation.** Throughout this document the constants are written in
+> the usual mathematical convention - `W_ACCURACY`, `TAU`, `LAMBDA_KEY` - because
+> that is how they read as equations. The Go identifiers are the unexported
+> lowerCamel equivalents listed in the table above: `wAccuracy`, `decayTau`,
+> `lambdaKey`. Go has no SCREAMING_SNAKE convention, and these are engine
+> internals rather than part of the package's contract, so they are unexported.
+> `TAU` is spelled `decayTau` in code to keep the link to the `exp(-age / TAU)`
+> formula explicit at the call site.
 
 ## Testability
 

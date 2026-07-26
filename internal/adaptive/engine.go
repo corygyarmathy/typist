@@ -16,8 +16,9 @@
 //     calls into this package; the engine never calls out.
 //
 //  3. DECOUPLED FROM PERSISTENCE. The engine works on engine-local types
-//     (CompetencyState, Lesson, ScoreUpdate). The progress service is
-//     responsible for translating between persisted models and these types.
+//     (CompetencyState, ItemScore, Observation, Result, Lesson - see types.go).
+//     The progress service is responsible for translating between persisted
+//     models and these types.
 //
 // The two key responsibilities are:
 //
@@ -30,20 +31,34 @@
 //     returns on items already well-mastered.
 package adaptive
 
-// CompetencyState is a snapshot of a single user's typing competency at a
-// point in time. It contains per-key and per-ngram score state, plus the
-// set of unlocked items.
-//
-// TODO(phase-3): implement per docs/adaptive-engine.md. Fields:
-//   - Keys      map[rune]ItemScore
-//   - Ngrams    map[string]ItemScore
-//   - NgramTier int
-//   - TargetWPM int  // tool-managed speed threshold; see ADR 0012
-type CompetencyState struct{}
+import "time"
 
-// Lesson is a generated practice prompt: 10-15 english-like words built
-// from the currently-unlocked keys and ngrams, weighted toward weak areas.
-type Lesson struct{}
+// The 'magic numbers' tuning the engine behaviour. Shared by every behaviour
+// file in the package; the design doc's table (docs/adaptive-engine.md,
+// "Tunable constants") lists the same set with the same defaults.
+//
+// Implemented as const block rather than a more complex Params struct for
+// simplicity. May revisit if advantageous to testing the engine, once at that
+// stage of implementation.
+//
+//nolint:unused // consumed by scoring/progression/generation in phase-3 steps 2-5.
+const (
+	wAccuracy            = 0.7                // weight of accuracy in instant score
+	wSpeed               = 0.3                // weight of speed in instant score
+	alpha                = 0.3                // EMA smoothing; higher = more reactive
+	decayTau             = 7 * 24 * time.Hour // recency decay time constant: the e-folding time in exp(-age/tau)
+	unlockKeyThreshold   = 0.85               // min decayed score on all keys to unlock next
+	unlockNgramThreshold = 0.80               // min decayed score on active ngrams to advance
+	minSamples           = 50                 // confidence gate before any unlock
+	phaseThreshold       = 0.75               // mean key score to enter ngram-focus phase
+	startingKeys         = 4                  // size of the initial unlocked set
+	startingTargetWPM    = 40                 // initial target speed; held until the alphabet unlocks
+	targetRaiseScore     = 0.85               // mean key decayed score needed to raise the target
+	targetWPMStep        = 5                  // WPM added per target raise
+	lambdaKey            = 3.0                // weak-key boost in generation
+	lambdaNgram          = 0.5                // weak-ngram boost; phase-scaled
+	lessonWords          = 15                 // words per generated lesson
+)
 
 // The engine's two entry points are package-level pure functions (not methods
 // on a struct): all randomness and the current time are injected so tests are
@@ -52,7 +67,3 @@ type Lesson struct{}
 // TODO(phase-3):
 //   - NextLesson(s CompetencyState, c Corpus, now time.Time, r *rand.Rand) Lesson
 //   - ApplyResult(s CompetencyState, res Result, now time.Time) CompetencyState
-//
-// Corpus is the interface consumed here and implemented by internal/corpus
-// (which owns the data); the engine takes it as a parameter so the dependency
-// points downward — adaptive never imports corpus.

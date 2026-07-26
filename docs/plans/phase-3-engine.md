@@ -19,10 +19,11 @@ This is your first phase of genuine _application logic_ - the part that makes th
   - `internal/progress/service.go:26` - `initialCompetency := []byte(`{"version":0}`)` with `// TODO(phase-3): replace with adaptive.InitialCompetency()`.
   - `cmd/server/main.go:38` - `// TODO(phase-3): construct adaptive engine`.
 - **Scaffolding already exists** as stubs with `TODO(phase-3)` markers - we fill these in, we don't create the packages from scratch:
-  - `internal/adaptive/engine.go` - `CompetencyState`, `Lesson` as empty structs; the two entry-point signatures written as a TODO comment.
+  - `internal/adaptive/engine.go` - _step 1 complete:_ now holds the package doc, the constants block, and the two entry-point signatures as a TODO comment. The domain types moved to `internal/adaptive/types.go` (see step 1).
+  - `internal/adaptive/types.go` - _added in step 1:_ the engine's vocabulary - `ItemScore`, `CompetencyState`, `Observation`, `Result`, `Lesson`, `Candidate`, and the `Corpus` interface.
   - `internal/adaptive/scoring.go` - a TODO comment listing the scoring/decay/threshold work.
   - `internal/adaptive/engine_test.go` - a skipped placeholder test and a list of test categories.
-  - `internal/corpus/corpus.go` - `Candidate` defined; `Provider` an empty struct with a TODO to `go:embed` the generated artifact and implement four methods.
+  - `internal/corpus/corpus.go` - `Provider` an empty struct with a TODO to `go:embed` the generated artifact and implement four methods. (`Candidate` used to live here; step 1 moved it to `adaptive`.)
 - **`cmd/corpusgen` does not exist yet.** It is created in this phase (the corpus track, below).
 
 ## Definition of done (from the roadmap)
@@ -56,7 +57,7 @@ You said you don't know where to start. Here is the general method, then the spe
 
 6. **Depend on an interface you own, so you can fake it.** The engine _defines_ `Corpus` and _consumes_ it; `internal/corpus` implements it. The dependency points toward the abstraction the engine controls. This is exactly what lets us do the engine-first build you chose: the whole engine can be built and tested against a 5-key hand-written fake corpus, with the real generated data swapped in only at the end.
 
-7. **Constants are guesses in one visible block.** Keep every tunable in a single `const` block (the spec's "Tunable constants" table). Treat the numbers as hypotheses to be validated by the harness, not truths - the harness _is_ how you'll find out whether 0.85 and TAU=7d actually produce sane progression.
+7. **Constants are guesses in one visible block.** Keep every tunable in a single `const` block (the spec's "Tunable constants" table). Treat the numbers as hypotheses to be validated by the harness, not truths - the harness _is_ how you'll find out whether 0.85 and `decayTau`=7d actually produce sane progression.
 
 8. **The harness is the acceptance test of the whole design.** It's not an afterthought bolted on at the end - it's the thing that tells you the constants and the progression rules cohere into a system that _converges_ instead of stalling or racing. Design it in your head early (a "virtual typist" that turns intended text into a plausible `Result`), even though you build it last, because knowing it's coming keeps every layer honest and injectable.
 
@@ -66,7 +67,9 @@ You said you don't know where to start. Here is the general method, then the spe
 
 ### 1. Constants as a package-level `const` block, not an injected `Params` struct - _chosen (Cory, 2026-07-23)_
 
-A single `const` block (plus a couple of `var`s for the non-const `time.Duration`s), exactly as the spec's table lists it. **Not** a `Params` struct threaded through the signatures. Rationale, in order of weight: (a) the phase-3 done-condition only ever runs the harness against _one_ constant set - programmatic sweeping of multiple sets is a spec _bonus_ ("doubles as a tuning tool"), not part of the DoD, so the need that would justify the struct doesn't arrive inside this phase; (b) it matches the spec's stated "package-level pure functions (not methods on a struct)," keeping code and doc telling one story; (c) the promotion is a cheap, compiler-driven refactor precisely because the package is pure, so deferring it costs almost nothing.
+A single `const` block, exactly as the spec's table lists it. **Not** a `Params` struct threaded through the signatures.
+
+> _Corrected during step 1:_ this decision originally hedged with "plus a couple of `var`s for the non-const `time.Duration`s". That turned out to be unnecessary - `time.Hour` is itself a typed constant, so `7 * 24 * time.Hour` is a constant expression and `decayTau` is a perfectly legal `const`. The whole block is one `const`, no `var`s. (Names are the Go-idiomatic unexported lowerCamel of the spec's table: `wAccuracy`, `minSamples`, `decayTau`, ... - Go has no SCREAMING*SNAKE convention, and these are engine internals, not the package's contract.) Rationale, in order of weight: (a) the phase-3 done-condition only ever runs the harness against \_one* constant set - programmatic sweeping of multiple sets is a spec _bonus_ ("doubles as a tuning tool"), not part of the DoD, so the need that would justify the struct doesn't arrive inside this phase; (b) it matches the spec's stated "package-level pure functions (not methods on a struct)," keeping code and doc telling one story; (c) the promotion is a cheap, compiler-driven refactor precisely because the package is pure, so deferring it costs almost nothing.
 
 > **Future option.** Promote the block to an injected `Params` (a value the engine funcs hang off, or a `DefaultParams()` + a field on an `Engine`) **when the harness needs to compare multiple constant sets in a single run.** That is the concrete revisit trigger; until it fires, the block stays. Record the reasoning as a short comment on the block, not an ADR (it fails the reach bar - it's a local structuring choice).
 
@@ -118,10 +121,14 @@ type Corpus interface {
     Transitions(context string) []Candidate
 }
 
-const ( /* W_ACCURACY, W_SPEED, ALPHA, thresholds, ... — the spec's table */ )
+const ( /* wAccuracy, wSpeed, alpha, thresholds, ... — the spec's table */ )
 ```
 
 **The design question:** _where does `Candidate` live?_ The `Corpus` interface (in `adaptive`) returns `[]Candidate`, but the engine must **not** import `corpus`. So the shared value type can't sit only in `corpus`. Two options: (a) move `Candidate` into `adaptive` next to the interface, and have `corpus` (the implementer) import `adaptive` to speak its vocabulary; (b) keep it in `corpus` and accept the import direction that implies. Reason it out - which keeps the dependency arrow pointing the way principle 6 wants? This is a small but real decision about dependency direction; make it deliberately.
+
+> **Decided (a) - `Candidate` lives in `adaptive`** _(Cory, 2026-07-26)_. Three reasons, in increasing order of weight. (1) A method's return type is as much a part of an interface's contract as its name, so a consumer-owned interface must own its signatures whole - under (b) `adaptive` would only half-own `Corpus`. (2) It is what makes Decision 2 real: under (b), `internal/adaptive` could not compile without `internal/corpus`, and the hand-written fake corpus in the engine's own tests would have to import the real package just to name the type it returns - the "swap the Provider in behind the interface with no engine change" proof would evaporate. (3) Go forbids import cycles, so (b) is a dead end anyway: once `adaptive` imports `corpus`, `corpus` can never import `adaptive`, and the refactor happens later under duress instead of deliberately. The cost - `corpus` now depends on something "above" it - is the point: the implementer depends on the abstraction. Rationale recorded as a comment on `adaptive.Candidate` and on `corpus.Provider`, **not** an ADR (fails the reach bar, per the Documentation & tooling impact section).
+>
+> **Also decided: types split into `types.go`.** `types.go` holds the vocabulary (the five domain types, `Candidate`, and the `Corpus` interface); `engine.go` keeps the package doc, the constants block, and the two entry points. Done at step 1 rather than deferred, because step 4 puts `ApplyResult` in `engine.go` and the file would have been carrying two jobs by then. The constants stay in `engine.go` - they are behavioural tuning shared by every behaviour file in the package, not vocabulary, and `engine.go` is the package's behavioural root.
 
 **Prove it:** nothing to test yet - types don't have behaviour. It compiles, and the two entry-point signatures now typecheck. Delete the `engine_test.go` `Skip` when step 2 gives you a real assertion.
 
@@ -155,9 +162,9 @@ func shouldRaiseTarget(s CompetencyState, now time.Time) bool
 func phaseIsNgrams(s CompetencyState, now time.Time) bool        // the soft key→ngram transition
 ```
 
-**The design question:** every predicate is an "and over all items" gate with **two** conditions - a `decayedScore` threshold _and_ a `MIN_SAMPLES` floor. Why does the sample floor exist? (A lucky high score off three keystrokes must not unlock.) Getting the "for all unlocked keys" quantifier right - and unlocking exactly _one_ key at a time in `KeyOrder` - is the subtle part.
+**The design question:** every predicate is an "and over all items" gate with **two** conditions - a `decayedScore` threshold _and_ a `minSamples` floor. Why does the sample floor exist? (A lucky high score off three keystrokes must not unlock.) Getting the "for all unlocked keys" quantifier right - and unlocking exactly _one_ key at a time in `KeyOrder` - is the subtle part.
 
-**Prove it** (`progression_test.go`): a state where all keys clear the score bar but one is under `MIN_SAMPLES` → no unlock; all clear both → exactly the next key in `KeyOrder` unlocks; target raise fires only when _all_ keys are unlocked and mean decayed score clears the bar.
+**Prove it** (`progression_test.go`): a state where all keys clear the score bar but one is under `minSamples` → no unlock; all clear both → exactly the next key in `KeyOrder` unlocks; target raise fires only when _all_ keys are unlocked and mean decayed score clears the bar.
 
 ### Step 4 - `ApplyResult` (`engine.go`)
 
@@ -185,7 +192,7 @@ func weightedSample(cands []Candidate, weights []float64, r *rand.Rand) rune
 func NextLesson(s CompetencyState, c Corpus, now time.Time, r *rand.Rand) Lesson
 ```
 
-**TODO:** for each step of the walk, get `corpus.Transitions(context)`, drop candidates whose key isn't unlocked, weight each by `baseFreq * (1 + LAMBDA_KEY*need(key)) * (1 + LAMBDA_NGRAM*need(ngram))` (with `LAMBDA_NGRAM` scaled by phase), sample the next char through `r`; insert word boundaries to hit the length distribution; loop to 10-15 words; record high-`need` items in `Targets`.
+**TODO:** for each step of the walk, get `corpus.Transitions(context)`, drop candidates whose key isn't unlocked, weight each by `baseFreq * (1 + lambdaKey*need(key)) * (1 + lambdaNgram*need(ngram))` (with `lambdaNgram` scaled by phase), sample the next char through `r`; insert word boundaries to hit the length distribution; loop to 10-15 words; record high-`need` items in `Targets`.
 
 **The design question:** this is the most open-ended step, so **build it in two passes.** Pass 1: ignore weakness entirely - just walk the transitions restricted to unlocked keys. That alone makes the headline invariant ("every character is an unlocked key") pass, and proves the walk terminates and produces words. Pass 2: layer the weighting on and prove weak items surface more often. Sub-problems to think through: how do you seed the walk's first context with only a few keys unlocked (and never starve)? How do you sample proportional to weights with an injected RNG (cumulative weights + one `r.Float64()`)?
 
@@ -202,7 +209,7 @@ func NextLesson(s CompetencyState, c Corpus, now time.Time, r *rand.Rand) Lesson
 func simulate(lesson Lesson, p profile, r *rand.Rand) Result
 ```
 
-**TODO:** loop `NextLesson` → `simulate` → `ApplyResult`, feeding state forward; assert a **good** learner unlocks all 26 keys within a bounded lesson count; a **struggling** learner takes longer but stays bounded (or plateaus below - decide what "handled" means for them); assert the phase flips key→ngram once mean key `decayedScore` crosses `PHASE_THRESHOLD`.
+**TODO:** loop `NextLesson` → `simulate` → `ApplyResult`, feeding state forward; assert a **good** learner unlocks all 26 keys within a bounded lesson count; a **struggling** learner takes longer but stays bounded (or plateaus below - decide what "handled" means for them); assert the phase flips key→ngram once mean key `decayedScore` crosses `phaseThreshold`.
 
 **The design question:** the harness is only as honest as the virtual typist. It must fabricate `Observation`s the way a real client would _measure_ them (the [attribution rules](../adaptive-engine.md#client-observation-model): first-try errors, per-window ngram attribution, no spaces scored). If the harness cheats, the convergence proof is worthless. This is also where you'd feel the pain if you'd wanted programmatic constant-sweeping - note whether the Future-option trigger from Decision 1 has fired.
 
@@ -213,10 +220,10 @@ func simulate(lesson Lesson, p profile, r *rand.Rand) Result
 **Write:**
 
 ```go
-func InitialCompetency() CompetencyState // STARTING_KEYS most-frequent keys unlocked at zero score, NgramTier init, TargetWPM=40
+func InitialCompetency() CompetencyState // startingKeys most-frequent keys unlocked at zero score, NgramTier init, TargetWPM=40
 ```
 
-**TODO:** add JSON tags to the engine types so `CompetencyState` marshals to the `competency` document in [`../schema.md`](../schema.md) exactly: `keys` / `ngrams` maps of `{score, samples, last_practiced}`, plus `ngram_tier` and `target_wpm`. Then close the two seams: `internal/progress/service.go:26` uses `json.Marshal(adaptive.InitialCompetency())` instead of `{"version":0}`; resolve `cmd/server/main.go:38` (with package-level funcs there's little to "construct" - mostly it's wiring `corpus.Provider` so the eventual `/lessons/next` in phase 4 has a corpus; keep this minimal and honest about what phase 3 actually needs).
+**TODO:** add JSON tags to the engine types so `CompetencyState` marshals to the `competency` document in [`../schema.md`](../schema.md) exactly: `keys` / `ngrams` maps of `{score, samples, last_practiced}`, plus `ngram_tier` and `target_wpm`. Then close the two seams: `internal/progress/service.go:26` uses `json.Marshal(adaptive.InitialCompetency())` instead of `{"version":0}`; resolve `cmd/server/main.go:38` (with package-level funcs there's little to "construct" - mostly it's wiring `corpus.Provider` so the eventual `/lessons/next` in phase 4 has a corpus; keep this minimal and honest about what phase 3 actually needs). Remove the nolint directive in `types.go` if still present.
 
 **The design question:** this is where the pure engine type meets the persisted shape. Coupling the engine struct's JSON tags to the DB document is a deliberate, ADR-0009-blessed choice (the JSONB doc _is_ the `CompetencyState`) - but it means a field rename in the engine is a migration concern. Worth a one-line comment at the type saying so.
 
