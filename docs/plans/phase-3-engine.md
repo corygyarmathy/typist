@@ -1,12 +1,12 @@
 # Phase 3 implementation plan - the corpus + engine (the brain)
 
-> A granular, session-to-session build plan for phase 3 of [`../roadmap.md`](../roadmap.md). The roadmap says _what_ phase 3 is and _when_ it's done; the [adaptive-engine design doc](../adaptive-engine.md) is the full spec (every formula, constant, and signature); this says _in what order we build it_, _how to approach designing it_, and _why each decision was made_. It is a living plan - update it as we go.
+> A granular, session-to-session build plan for phase 3 of [`../roadmap.md`](../roadmap.md). The roadmap says _what_ phase 3 is and _when_ it's done; the [engine design doc](../engine.md) is the full spec (every formula, constant, and signature); this says _in what order we build it_, _how to approach designing it_, and _why each decision was made_. It is a living plan - update it as we go.
 
 ## How this phase is different (read first)
 
 Phases 1-2 had two crutches this one doesn't, and that changes how we work:
 
-1. **No reference branch.** Phase 2 had `ai-reference-phase-2` to reimplement top-down. Phase 3 has no reference - but it has something better: [`adaptive-engine.md`](../adaptive-engine.md) is an unusually complete spec. Every struct, formula, threshold, and function signature is already written down. So the _translation_ (spec → Go) is well-scaffolded; the _learning_ is in **how you decompose and structure** that translation, and in the design judgment each step demands. That judgment is what this plan front-loads.
+1. **No reference branch.** Phase 2 had `ai-reference-phase-2` to reimplement top-down. Phase 3 has no reference - but it has something better: [`engine.md`](../engine.md) is an unusually complete spec. Every struct, formula, threshold, and function signature is already written down. So the _translation_ (spec → Go) is well-scaffolded; the _learning_ is in **how you decompose and structure** that translation, and in the design judgment each step demands. That judgment is what this plan front-loads.
 
 2. **No HTTP edge.** Phase 2's driver was "curl a route, get a 501, let the failing call pull the next file into existence" - outside-in from the network boundary. This package has no network boundary. It is pure functions: `state in → state out`. The equivalent driver here is **the test**: a pure function's only caller is its test, so the failing test is what pulls the implementation into existence. Same red→green discipline, different outermost layer. See [How to approach pure domain logic](#how-to-approach-pure-domain-logic).
 
@@ -16,15 +16,17 @@ This is your first phase of genuine _application logic_ - the part that makes th
 
 - Branch to build on: `main` (phases 1-2 complete: config, logging, pgx pool, migrations, auth vertical, the `oapi-codegen` wiring, `GET /progress` behind the auth middleware).
 - **Phase 3 is pure and parallelisable** - it imports nothing from the server, and the server barely imports it yet. The two seams where the server currently fakes the engine's absence:
-  - `internal/progress/service.go:26` - `initialCompetency := []byte(`{"version":0}`)` with `// TODO(phase-3): replace with adaptive.InitialCompetency()`.
-  - `cmd/server/main.go:38` - `// TODO(phase-3): construct adaptive engine`.
+  - `internal/progress/service.go:26` - `initialCompetency := []byte(`{"version":0}`)` with `// TODO(phase-3): replace with engine.InitialCompetency()`.
+  - `cmd/server/main.go:38` - `// TODO(phase-3): construct the engine`.
 - **Scaffolding already exists** as stubs with `TODO(phase-3)` markers - we fill these in, we don't create the packages from scratch:
-  - `internal/adaptive/engine.go` - _step 1 complete:_ now holds the package doc, the constants block, and the two entry-point signatures as a TODO comment. The domain types moved to `internal/adaptive/types.go` (see step 1).
-  - `internal/adaptive/types.go` - _added in step 1:_ the engine's vocabulary - `ItemScore`, `CompetencyState`, `Observation`, `Result`, `Lesson`, `Candidate`, and the `Corpus` interface.
-  - `internal/adaptive/scoring.go` - _step 2 complete:_ `instant`, `updateScore` and `decayedScore`, with `scoring_test.go` covering the four invariants below. The threshold constants it originally listed live in `engine.go`'s block and are consumed by step 3, not here.
-  - `internal/adaptive/engine_test.go` - a skipped placeholder test and a list of test categories.
-  - `internal/corpus/corpus.go` - `Provider` an empty struct with a TODO to `go:embed` the generated artifact and implement four methods. (`Candidate` used to live here; step 1 moved it to `adaptive`.)
+  - `internal/engine/engine.go` - _step 1 complete:_ now holds the package doc, the constants block, and the two entry-point signatures as a TODO comment. The domain types moved to `internal/engine/types.go` (see step 1).
+  - `internal/engine/types.go` - _added in step 1:_ the engine's vocabulary - `ItemScore`, `CompetencyState`, `Observation`, `Result`, `Lesson`, `Candidate`, and the `Corpus` interface.
+  - `internal/engine/scoring.go` - _step 2 complete:_ `instant`, `updateScore` and `decayedScore`, with `scoring_test.go` covering the four invariants below. The threshold constants it originally listed live in `engine.go`'s block and are consumed by step 3, not here.
+  - `internal/engine/engine_test.go` - a skipped placeholder test and a list of test categories.
+  - `internal/corpus/corpus.go` - `Provider` an empty struct with a TODO to `go:embed` the generated artifact and implement four methods. (`Candidate` used to live here; step 1 moved it to `engine`.)
 - **`cmd/corpusgen` does not exist yet.** It is created in this phase (the corpus track, below).
+
+> **Renamed `internal/adaptive` → `internal/engine`, and `docs/adaptive-engine.md` → `docs/engine.md`** _(Cory, 2026-07-27)_. `adaptive` was a modifier with no noun - an adjective standing alone - and in Go the package name is read joined to the identifier at every call site, so `adaptive.CompetencyState` attached the adjective to the wrong noun. `engine` is the generic-noun failure in the abstract, but two things settle it here: the repo's own ubiquitous language already calls this thing "the engine" everywhere it is written in prose ([ADR 0014](../adr/0014-engine-as-library-state-follows-identity.md) is _engine-as-library_, `AGENTS.md`, the roadmap, this plan's filename), so the package name was the only remaining synonym; and `internal/` bounds the ambiguity - "engine of what" only bites when there could be two, and there is exactly one, unimportable from outside the module. `engine.CompetencyState` / `engine.ApplyResult` read noun-noun. Runner-up was `tutor`, the most self-describing option, rejected for introducing a fifth word for a concept the docs had already settled on. **"Adaptive" survives as prose** - it is a good adjective for the product (`README.md`, `flake.nix`, the OpenAPI description) and a bad one for an identifier. Not an ADR: a package rename has no cross-cutting opaque fork to record, so the living plan is the right vehicle.
 
 ## Definition of done (from the roadmap)
 
@@ -37,7 +39,7 @@ Concretely, phase 3 ships:
 - [ ] Progression: key unlocking, ngram-tier advance (thin - see decisions), target-WPM raise, the key→ngram phase derivation.
 - [ ] `ApplyResult` - folds a `Result` into state and applies at most one unlock / one tier advance / one target raise, in the spec's order.
 - [ ] `NextLesson` - the weighted random walk over the corpus transition graph, restricted to unlocked keys, biased toward weak items.
-- [ ] `adaptive.InitialCompetency()` and JSON marshaling that matches the `competency` document in [`../schema.md`](../schema.md); both server seams closed.
+- [ ] `engine.InitialCompetency()` and JSON marshaling that matches the `competency` document in [`../schema.md`](../schema.md); both server seams closed.
 - [ ] `cmd/corpusgen` + the embedded artifact + `corpus.Provider`, with a **frequency-validation test** against the [Norvig/Mayzner](https://norvig.com/mayzner.html) reference.
 - [ ] Unit + property tests at every layer, and the **simulated-user harness** proving bounded convergence for a good and a struggling learner.
 
@@ -61,7 +63,7 @@ You said you don't know where to start. Here is the general method, then the spe
 
 8. **The harness is the acceptance test of the whole design.** It's not an afterthought bolted on at the end - it's the thing that tells you the constants and the progression rules cohere into a system that _converges_ instead of stalling or racing. Design it in your head early (a "virtual typist" that turns intended text into a plausible `Result`), even though you build it last, because knowing it's coming keeps every layer honest and injectable.
 
-**Where to start:** step 1 (types), then step 2 (scoring). Scoring is the ideal first real code - it's the smallest leaf, its formulas are fully specified in [`adaptive-engine.md` §Scoring](../adaptive-engine.md#scoring), and its tests are crisp and satisfying ("perfect-but-slow beats fast-but-sloppy"). You'll get a green test fast, which is the point.
+**Where to start:** step 1 (types), then step 2 (scoring). Scoring is the ideal first real code - it's the smallest leaf, its formulas are fully specified in [`engine.md` §Scoring](../engine.md#scoring), and its tests are crisp and satisfying ("perfect-but-slow beats fast-but-sloppy"). You'll get a green test fast, which is the point.
 
 ## Decisions (locked in for phase 3)
 
@@ -89,11 +91,11 @@ Unlock in `corpus.KeyOrder()` (frequency order), the keybr-faithful default. A p
 
 Each step names **what you write** (the signature + a TODO list - your shape to fill in, not filled-in code), **the design question** to wrestle with (this is the learning), and **how you prove it** (the test / checkpoint). Build leaves → root. Expect to revisit a lower step when an upper one reveals a missing helper - that's the method working, not a mistake.
 
-The formulas themselves live in [`adaptive-engine.md`](../adaptive-engine.md) - when a step says "translate §Scoring," the arithmetic is _there_; your work is turning it into well-structured, tested Go, which is where the understanding is built. I've deliberately not pre-written the bodies.
+The formulas themselves live in [`engine.md`](../engine.md) - when a step says "translate §Scoring," the arithmetic is _there_; your work is turning it into well-structured, tested Go, which is where the understanding is built. I've deliberately not pre-written the bodies.
 
 ### Step 1 - Types & the constants block (`engine.go`, a new `types.go` if it reads better)
 
-**Write:** fill the stub structs and add the rest, per [§Core model](../adaptive-engine.md#core-model):
+**Write:** fill the stub structs and add the rest, per [§Core model](../engine.md#core-model):
 
 ```go
 type ItemScore struct {
@@ -124,9 +126,9 @@ type Corpus interface {
 const ( /* wAccuracy, wSpeed, alpha, thresholds, ... — the spec's table */ )
 ```
 
-**The design question:** _where does `Candidate` live?_ The `Corpus` interface (in `adaptive`) returns `[]Candidate`, but the engine must **not** import `corpus`. So the shared value type can't sit only in `corpus`. Two options: (a) move `Candidate` into `adaptive` next to the interface, and have `corpus` (the implementer) import `adaptive` to speak its vocabulary; (b) keep it in `corpus` and accept the import direction that implies. Reason it out - which keeps the dependency arrow pointing the way principle 6 wants? This is a small but real decision about dependency direction; make it deliberately.
+**The design question:** _where does `Candidate` live?_ The `Corpus` interface (in `engine`) returns `[]Candidate`, but the engine must **not** import `corpus`. So the shared value type can't sit only in `corpus`. Two options: (a) move `Candidate` into `engine` next to the interface, and have `corpus` (the implementer) import `engine` to speak its vocabulary; (b) keep it in `corpus` and accept the import direction that implies. Reason it out - which keeps the dependency arrow pointing the way principle 6 wants? This is a small but real decision about dependency direction; make it deliberately.
 
-> **Decided (a) - `Candidate` lives in `adaptive`** _(Cory, 2026-07-26)_. Three reasons, in increasing order of weight. (1) A method's return type is as much a part of an interface's contract as its name, so a consumer-owned interface must own its signatures whole - under (b) `adaptive` would only half-own `Corpus`. (2) It is what makes Decision 2 real: under (b), `internal/adaptive` could not compile without `internal/corpus`, and the hand-written fake corpus in the engine's own tests would have to import the real package just to name the type it returns - the "swap the Provider in behind the interface with no engine change" proof would evaporate. (3) Go forbids import cycles, so (b) is a dead end anyway: once `adaptive` imports `corpus`, `corpus` can never import `adaptive`, and the refactor happens later under duress instead of deliberately. The cost - `corpus` now depends on something "above" it - is the point: the implementer depends on the abstraction. Rationale recorded as a comment on `adaptive.Candidate` and on `corpus.Provider`, **not** an ADR (fails the reach bar, per the Documentation & tooling impact section).
+> **Decided (a) - `Candidate` lives in `engine`** _(Cory, 2026-07-26)_. Three reasons, in increasing order of weight. (1) A method's return type is as much a part of an interface's contract as its name, so a consumer-owned interface must own its signatures whole - under (b) `engine` would only half-own `Corpus`. (2) It is what makes Decision 2 real: under (b), `internal/engine` could not compile without `internal/corpus`, and the hand-written fake corpus in the engine's own tests would have to import the real package just to name the type it returns - the "swap the Provider in behind the interface with no engine change" proof would evaporate. (3) Go forbids import cycles, so (b) is a dead end anyway: once `engine` imports `corpus`, `corpus` can never import `engine`, and the refactor happens later under duress instead of deliberately. The cost - `corpus` now depends on something "above" it - is the point: the implementer depends on the abstraction. Rationale recorded as a comment on `engine.Candidate` and on `corpus.Provider`, **not** an ADR (fails the reach bar, per the Documentation & tooling impact section).
 >
 > **Also decided: types split into `types.go`.** `types.go` holds the vocabulary (the five domain types, `Candidate`, and the `Corpus` interface); `engine.go` keeps the package doc, the constants block, and the two entry points. Done at step 1 rather than deferred, because step 4 puts `ApplyResult` in `engine.go` and the file would have been carrying two jobs by then. The constants stay in `engine.go` - they are behavioural tuning shared by every behaviour file in the package, not vocabulary, and `engine.go` is the package's behavioural root.
 
@@ -134,7 +136,7 @@ const ( /* wAccuracy, wSpeed, alpha, thresholds, ... — the spec's table */ )
 
 ### Step 2 - Scoring primitives (`scoring.go`) — _start here_
 
-**Write** three small pure functions; translate [§Scoring](../adaptive-engine.md#scoring):
+**Write** three small pure functions; translate [§Scoring](../engine.md#scoring):
 
 ```go
 // instant score for one item's observation this lesson: accuracy-weighted, [0,1].
@@ -146,7 +148,7 @@ func updateScore(prev ItemScore, o Observation, targetWPM int, now time.Time) (I
 func decayedScore(s ItemScore, now time.Time) float64
 ```
 
-> **Decided during the step: the two folding functions return `(value, ok)`, not a bare value** _(Cory, 2026-07-27)_. The three degenerate inputs (`Attempts == 0`, `TotalMillis == 0`, `targetWPM == 0`) are caller bugs, so the tempting shape was a guard that returns `0`. But `0` is a legal score, so that sentinel is indistinguishable from "typed abysmally" and folds silently into persisted state - and it invites the caller to ignore the problem, which is exactly what it did once during this step, letting a mistyped test fixture pass by comparing a real score against the sentinel. The bool makes the invalid case something a caller must handle or explicitly discard. On `!ok`, `updateScore` returns `prev` unchanged so that discarding it no-ops rather than erasing the item's history. The guard is kept even though `ApplyResult` should reject these upstream, because `targetWPM == 0` is integer division and would panic rather than merely return a wrong number - and a zero-valued `CompetencyState` has `TargetWPM: 0`. An earlier attempt logged the rejection via `slog`; that was removed as a violation of the package's no-I/O rule (see [`../adaptive-engine.md`](../adaptive-engine.md#scoring)) - the engine runs in-process inside the TUI, where the default handler writes over the render.
+> **Decided during the step: the two folding functions return `(value, ok)`, not a bare value** _(Cory, 2026-07-27)_. The three degenerate inputs (`Attempts == 0`, `TotalMillis == 0`, `targetWPM == 0`) are caller bugs, so the tempting shape was a guard that returns `0`. But `0` is a legal score, so that sentinel is indistinguishable from "typed abysmally" and folds silently into persisted state - and it invites the caller to ignore the problem, which is exactly what it did once during this step, letting a mistyped test fixture pass by comparing a real score against the sentinel. The bool makes the invalid case something a caller must handle or explicitly discard. On `!ok`, `updateScore` returns `prev` unchanged so that discarding it no-ops rather than erasing the item's history. The guard is kept even though `ApplyResult` should reject these upstream, because `targetWPM == 0` is integer division and would panic rather than merely return a wrong number - and a zero-valued `CompetencyState` has `TargetWPM: 0`. An earlier attempt logged the rejection via `slog`; that was removed as a violation of the package's no-I/O rule (see [`../engine.md`](../engine.md#scoring)) - the engine runs in-process inside the TUI, where the default handler writes over the render.
 
 **The design question:** decay is applied _at read time_, never stored (the stored `Score` stays honest; decay is a lens). Internalise _why_ - it means no background job, and it's a pure function of two timestamps, so it's deterministic and trivially testable. Which functions should call `decayedScore` and which the raw `Score`? (Selection and unlocking read decayed; the EMA update reads raw.)
 
@@ -154,7 +156,7 @@ func decayedScore(s ItemScore, now time.Time) float64
 
 ### Step 3 - Progression predicates (`progression.go`)
 
-**Write** the decision functions, each named and independently testable; translate [§Progression](../adaptive-engine.md#progression):
+**Write** the decision functions, each named and independently testable; translate [§Progression](../engine.md#progression):
 
 ```go
 func activeNgrams(s CompetencyState, c Corpus) []string          // within tier AND all keys unlocked
@@ -177,7 +179,7 @@ func phaseIsNgrams(s CompetencyState, now time.Time) bool        // the soft key
 func ApplyResult(s CompetencyState, res Result, now time.Time) CompetencyState
 ```
 
-**TODO order** (from [§The two engine functions](../adaptive-engine.md#the-two-engine-functions)): copy the state → fold every observed key and ngram via `updateScore` → then `nextKeyToUnlock` (apply at most one) → then `shouldAdvanceNgramTier` (at most one) → then `shouldRaiseTarget` (at most one step). Scoring _before_ unlocking is deliberate: a lesson's own result can earn the unlock it triggers.
+**TODO order** (from [§The two engine functions](../engine.md#the-two-engine-functions)): copy the state → fold every observed key and ngram via `updateScore` → then `nextKeyToUnlock` (apply at most one) → then `shouldAdvanceNgramTier` (at most one) → then `shouldRaiseTarget` (at most one step). Scoring _before_ unlocking is deliberate: a lesson's own result can earn the unlock it triggers.
 
 **The design question:** _purity means you must not mutate the input maps_ - callers may still hold the old state. How do you copy `map[rune]ItemScore` cleanly (and cheaply enough)? And is there a case for a small internal mutable working copy that you return as the new state? Decide, and make the no-mutation guarantee something a test enforces.
 
@@ -185,7 +187,7 @@ func ApplyResult(s CompetencyState, res Result, now time.Time) CompetencyState
 
 ### Step 5 - `NextLesson` / generation (`generate.go` + `engine.go`) — the hard one
 
-**Write** the second entry point and its helpers; translate [§Lesson generation](../adaptive-engine.md#lesson-generation):
+**Write** the second entry point and its helpers; translate [§Lesson generation](../engine.md#lesson-generation):
 
 ```go
 func need(item string, s CompetencyState, now time.Time) float64 // 1-decayed; 1.0 for new active items
@@ -213,7 +215,7 @@ func simulate(lesson Lesson, p profile, r *rand.Rand) Result
 
 **TODO:** loop `NextLesson` → `simulate` → `ApplyResult`, feeding state forward; assert a **good** learner unlocks all 26 keys within a bounded lesson count; a **struggling** learner takes longer but stays bounded (or plateaus below - decide what "handled" means for them); assert the phase flips key→ngram once mean key `decayedScore` crosses `phaseThreshold`.
 
-**The design question:** the harness is only as honest as the virtual typist. It must fabricate `Observation`s the way a real client would _measure_ them (the [attribution rules](../adaptive-engine.md#client-observation-model): first-try errors, per-window ngram attribution, no spaces scored). If the harness cheats, the convergence proof is worthless. This is also where you'd feel the pain if you'd wanted programmatic constant-sweeping - note whether the Future-option trigger from Decision 1 has fired.
+**The design question:** the harness is only as honest as the virtual typist. It must fabricate `Observation`s the way a real client would _measure_ them (the [attribution rules](../engine.md#client-observation-model): first-try errors, per-window ngram attribution, no spaces scored). If the harness cheats, the convergence proof is worthless. This is also where you'd feel the pain if you'd wanted programmatic constant-sweeping - note whether the Future-option trigger from Decision 1 has fired.
 
 **Prove it:** the harness _is_ the proof - it's the roadmap's headline done-condition. **Checkpoint:** good + struggling learners both converge as asserted, deterministically under a fixed seed.
 
@@ -225,7 +227,7 @@ func simulate(lesson Lesson, p profile, r *rand.Rand) Result
 func InitialCompetency() CompetencyState // startingKeys most-frequent keys unlocked at zero score, NgramTier init, TargetWPM=40
 ```
 
-**TODO:** add JSON tags to the engine types so `CompetencyState` marshals to the `competency` document in [`../schema.md`](../schema.md) exactly: `keys` / `ngrams` maps of `{score, samples, last_practiced}`, plus `ngram_tier` and `target_wpm`. Then close the two seams: `internal/progress/service.go:26` uses `json.Marshal(adaptive.InitialCompetency())` instead of `{"version":0}`; resolve `cmd/server/main.go:38` (with package-level funcs there's little to "construct" - mostly it's wiring `corpus.Provider` so the eventual `/lessons/next` in phase 4 has a corpus; keep this minimal and honest about what phase 3 actually needs). Remove the nolint directive in `types.go` if still present.
+**TODO:** add JSON tags to the engine types so `CompetencyState` marshals to the `competency` document in [`../schema.md`](../schema.md) exactly: `keys` / `ngrams` maps of `{score, samples, last_practiced}`, plus `ngram_tier` and `target_wpm`. Then close the two seams: `internal/progress/service.go:26` uses `json.Marshal(engine.InitialCompetency())` instead of `{"version":0}`; resolve `cmd/server/main.go:38` (with package-level funcs there's little to "construct" - mostly it's wiring `corpus.Provider` so the eventual `/lessons/next` in phase 4 has a corpus; keep this minimal and honest about what phase 3 actually needs). Remove the nolint directive in `types.go` if still present.
 
 **The design question:** this is where the pure engine type meets the persisted shape. Coupling the engine struct's JSON tags to the DB document is a deliberate, ADR-0009-blessed choice (the JSONB doc _is_ the `CompetencyState`) - but it means a field rename in the engine is a migration concern. Worth a one-line comment at the type saying so.
 
@@ -252,7 +254,7 @@ No DB and no HTTP in this package's tests - if a test needs either, the logic ha
 ## Documentation & tooling impact
 
 - **`go.mod`:** expect **no new dependencies** - `math`, `math/rand`, `time`, `encoding/json`, `embed` are all stdlib. (A nice contrast with phase 2, which pulled in argon2/jwt; worth noting for the portfolio.) If a corpus source needs a parser, prefer stdlib first and justify anything more.
-- **ADRs:** expect **none new.** The cross-cutting engine decisions are already recorded - [0012](../adr/0012-targets-set-by-tool-not-user.md) (targets by tool), [0013](../adr/0013-corpus-as-embedded-generated-data.md) (corpus embedded/generated), [0014](../adr/0014-engine-as-library-state-follows-identity.md) (engine as library), [0009](../adr/0009-json-serialised-data.md) (JSON competency doc). The engine's internal math is documented by [`adaptive-engine.md`](../adaptive-engine.md) (a design doc, the right vehicle) plus code comments. The constants-block choice, the `Candidate` placement, and bigrams-only all fail the ADR reach/opacity bars → package or code comments, not new numbers. This keeps the ADR index from sprawling, which is itself the correct call to be able to defend.
+- **ADRs:** expect **none new.** The cross-cutting engine decisions are already recorded - [0012](../adr/0012-targets-set-by-tool-not-user.md) (targets by tool), [0013](../adr/0013-corpus-as-embedded-generated-data.md) (corpus embedded/generated), [0014](../adr/0014-engine-as-library-state-follows-identity.md) (engine as library), [0009](../adr/0009-json-serialised-data.md) (JSON competency doc). The engine's internal math is documented by [`engine.md`](../engine.md) (a design doc, the right vehicle) plus code comments. The constants-block choice, the `Candidate` placement, and bigrams-only all fail the ADR reach/opacity bars → package or code comments, not new numbers. This keeps the ADR index from sprawling, which is itself the correct call to be able to defend.
 - **`internal/corpus/data/`:** new committed generated artifact (`corpus.json`) + the `go:embed`.
 - **Makefile:** consider a `corpusgen` target that regenerates the artifact, so the generation step is reproducible and documented rather than a one-off.
 

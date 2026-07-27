@@ -1,5 +1,5 @@
-// Package corpus provides the read-only language data the adaptive engine
-// needs: a frequency order over letters, a frequency-ranked list of ngrams,
+// Package corpus provides the read-only language data the engine needs:
+// a frequency order over letters, a frequency-ranked list of ngrams,
 // and a context -> next-character transition graph for pseudo-word generation.
 //
 // Per ADR 0013 this is static reference data, derived from a source corpus by
@@ -12,16 +12,16 @@
 package corpus
 
 // Provider serves the embedded corpus. It satisfies the Corpus interface that
-// internal/adaptive defines and consumes: the consumer owns the interface,
+// internal/engine defines and consumes: the consumer owns the interface,
 // this package owns the data.
 //
 // Note the import direction that implies, which is deliberate and the reverse
 // of what "corpus is lower-level than the engine" would suggest: implementing
-// these methods makes this package import internal/adaptive, because the
-// signatures speak the engine's vocabulary (adaptive.Candidate). The
-// implementer depends on the consumer's abstraction, so internal/adaptive can
+// these methods makes this package import internal/engine, because the
+// signatures speak the engine's vocabulary (engine.Candidate). The
+// implementer depends on the consumer's abstraction, so internal/engine can
 // be built and tested with this package absent entirely. The reasoning is
-// recorded on adaptive.Candidate.
+// recorded on engine.Candidate.
 //
 // TODO(phase-3): back this with the go:embed'd generated artifact, e.g.
 //
@@ -32,5 +32,5 @@ package corpus
 //   - StartingKeys() int
 //   - KeyOrder() []rune                 // frequency order, for unlocking
 //   - NgramsByFrequency() []string      // frequency-ranked, defines tiers
-//   - Transitions(context string) []adaptive.Candidate
+//   - Transitions(context string) []engine.Candidate
 type Provider struct{}

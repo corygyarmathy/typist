@@ -1,8 +1,8 @@
-package adaptive
+package engine
 
 import "testing"
 
-// The adaptive engine is the most heavily-tested package in the codebase
+// The engine is the most heavily-tested package in the codebase
 // because it contains the genuinely interesting domain logic and it's
 // trivially testable (pure functions).
 //

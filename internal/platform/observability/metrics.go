@@ -5,7 +5,7 @@
 //   - http_requests_total{method, route, status}
 //   - http_request_duration_seconds{method, route}
 //   - db_query_duration_seconds{query}
-//   - adaptive_engine_lesson_generated_total
+//   - engine_lesson_generated_total
 //
 // Metrics handlers are wired in cmd/server/main.go and exposed on the
 // same HTTP server as the API (separate listener is overkill at this size).

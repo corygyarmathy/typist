@@ -40,7 +40,7 @@ Config loader (`Secret` type, `_FILE` support, production guard), structured log
 
 ### Phase 3 - Corpus + engine (the brain), bigrams only
 
-Pure and parallelisable with phases 1–2. `cmd/corpusgen` → embedded artifact + frequency-validation test (assert against the [Norvig/Mayzner](https://norvig.com/mayzner.html) reference). Engine: `CompetencyState` / `ItemScore` / `Observation` / `Lesson`, scoring (accuracy-weighted EMA), recency decay, key unlocking, generation (weighted walk over the bigram transition graph), `ApplyResult` (including the target-WPM raise). Keep ngram _scoring_ in; ngram-tier progression can be thin here and deepen later. Full spec: [`adaptive-engine.md`](adaptive-engine.md).
+Pure and parallelisable with phases 1–2. `cmd/corpusgen` → embedded artifact + frequency-validation test (assert against the [Norvig/Mayzner](https://norvig.com/mayzner.html) reference). Engine: `CompetencyState` / `ItemScore` / `Observation` / `Lesson`, scoring (accuracy-weighted EMA), recency decay, key unlocking, generation (weighted walk over the bigram transition graph), `ApplyResult` (including the target-WPM raise). Keep ngram _scoring_ in; ngram-tier progression can be thin here and deepen later. Full spec: [`engine.md`](engine.md).
 
 **Done when:** unit + property tests pass (e.g. `testing/quick`: a generated lesson contains only unlocked keys) **and** the simulated-user harness drives a "good" and a "struggling" learner through the alphabet in a bounded number of lessons.
 
@@ -48,7 +48,7 @@ Pure and parallelisable with phases 1–2. `cmd/corpusgen` → embedded artifact
 
 ### Phase 4 - Progress & sessions vertical (closes the server loop)
 
-`sessions` migration, per-context sqlc for `progress` / `session`, repositories, services. Wire `GET /lessons/next` (pure read), `GET /progress`, `GET /sessions` (keyset cursor), and the cross-context `POST /sessions` - the transactional write: `SELECT … FOR UPDATE` on `user_progress`, `adaptive.ApplyResult`, server-derived WPM/accuracy, both writes, commit (see the write flow in [`architecture.md`](architecture.md)).
+`sessions` migration, per-context sqlc for `progress` / `session`, repositories, services. Wire `GET /lessons/next` (pure read), `GET /progress`, `GET /sessions` (keyset cursor), and the cross-context `POST /sessions` - the transactional write: `SELECT … FOR UPDATE` on `user_progress`, `engine.ApplyResult`, server-derived WPM/accuracy, both writes, commit (see the write flow in [`architecture.md`](architecture.md)).
 
 **Done when:** a scripted loop (register → next → submit → progress) shows competency changing across calls; the FOR-UPDATE write is covered by a concurrency test.
 

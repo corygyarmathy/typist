@@ -35,7 +35,7 @@ func main() {
 }
 
 func run() error {
-	// TODO(phase-3): construct adaptive engine
+	// TODO(phase-3): construct the engine
 	// TODO(phase-6): expose /metrics
 
 	ctx, stop := signal.NotifyContext(

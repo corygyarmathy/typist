@@ -36,11 +36,11 @@ The server is structured as a modular monolith. Four bounded contexts. Three own
 | `progress` | Per-user per-key and per-ngram competency state                           |
 | `session`  | Records of completed typing sessions and their results                    |
 
-The `adaptive` package sits above these contexts, consuming `corpus` and `progress` to produce lessons. It contains the interesting domain logic and is deliberately I/O-free.
+The `engine` package sits above these contexts, consuming `corpus` and `progress` to produce lessons. It contains the interesting domain logic and is deliberately I/O-free.
 
 ## Where the engine runs
 
-`adaptive` is a pure library, so it runs in two places ([ADR 0014](adr/0014-engine-as-library-state-follows-identity.md)). For identified users (password or SSH key) it runs inside the server, behind the API, with state in Postgres. For anonymous or offline users it runs in-process in the client, against ephemeral or local-file state, never touching the database. The identified path is what the SSH demo exercises end to end; the anonymous path keeps the tool usable with no sign-in wall and without writing rows.
+`engine` is a pure library, so it runs in two places ([ADR 0014](adr/0014-engine-as-library-state-follows-identity.md)). For identified users (password or SSH key) it runs inside the server, behind the API, with state in Postgres. For anonymous or offline users it runs in-process in the client, against ephemeral or local-file state, never touching the database. The identified path is what the SSH demo exercises end to end; the anonymous path keeps the tool usable with no sign-in wall and without writing rows.
 
 ## Layering inside a context
 
@@ -65,7 +65,7 @@ A typical authenticated request (`GET /api/v1/lessons/next`) flows through:
 3. Auth middleware validates the JWT and injects the user ID into the context
 4. The progress handler parses the request and calls `progress.Service.NextLesson(ctx, userID)`
 5. The service loads the user's competency state from `progress.Repository`
-6. The service calls `adaptive.NextLesson(state, corpus, now, rand)` - pure
+6. The service calls `engine.NextLesson(state, corpus, now, rand)` - pure
 7. The service returns the result up through the handler, which JSON-encodes it
 
 ## Write flow
@@ -74,7 +74,7 @@ A typical authenticated request (`GET /api/v1/lessons/next`) flows through:
 
 1. begin a transaction
 2. load the user's `CompetencyState` via the `progress` repository, selecting the `user_progress` row `FOR UPDATE` (transaction-scoped). The state is a whole-document load-modify-write, so two overlapping submissions for the same user could otherwise lose an update; the row lock serialises them. Contention is per-user (one person typing), so the lock is effectively never contended.
-3. `adaptive.ApplyResult(state, result, now)` - pure; folds the observations in and applies any unlock or tier advance
+3. `engine.ApplyResult(state, result, now)` - pure; folds the observations in and applies any unlock or tier advance
 4. derive the session's WPM and accuracy from the submitted duration and observations - pure; the server does not trust client-computed aggregates
 5. insert the `sessions` row via the `session` repository (same transaction)
 6. write the updated competency via the `progress` repository (same transaction)

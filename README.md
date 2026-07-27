@@ -34,7 +34,7 @@ curl http://localhost:8080/healthz
 
 ## What's interesting in here
 
-- **[`internal/adaptive`](internal/adaptive)** - the adaptive engine. Pure
+- **[`internal/engine`](internal/engine)** - the adaptive engine. Pure
   functions, no I/O, heavily unit-tested. This is where the actual domain
   reasoning lives.
 - **[`api/openapi.yaml`](api/openapi.yaml)** - API contract. Server

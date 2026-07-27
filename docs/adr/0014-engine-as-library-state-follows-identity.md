@@ -15,7 +15,7 @@ The product requirement is that the trainer is usable the instant it launches or
 
 ## Decision
 
-Adopt one rule: **`internal/adaptive` is a pure library; the API is that library plus persistence and auth; state lives wherever the user's identity says it should.**
+Adopt one rule: **`internal/engine` is a pure library; the API is that library plus persistence and auth; state lives wherever the user's identity says it should.**
 
 | Surface                   | Identity         | State lives                                          | Engine runs           |
 | ------------------------- | ---------------- | ---------------------------------------------------- | --------------------- |
@@ -34,7 +34,7 @@ This supplements [ADR 0010](/docs/adr/0010-unified-identity-and-jwt.md). The "on
 
 - The tool is usable immediately on every surface, with no sign-in wall - the core product requirement.
 - The anonymous-never-persists rule falls out naturally: anonymous state has nowhere to be written, so the database is untouched without special-casing the API.
-- `internal/adaptive` having two consumers (in-process and behind the API) is a clean property of a pure library, and one worth showing: the same domain code runs in two deployment modes.
+- `internal/engine` having two consumers (in-process and behind the API) is a clean property of a pure library, and one worth showing: the same domain code runs in two deployment modes.
 - The standalone TUI gains useful offline behaviour for free - it works with no server at all, and signing in is what opts a user into sync.
 
 **Negative**

@@ -1,6 +1,6 @@
 # Database Schema
 
-> Reflects the decisions in [ADR 0005 (sqlc + goose)](/docs/adr/0005-sqlc-and-goose.md), [ADR 0010 (unified identity + JWT)](/docs/adr/0010-unified-identity-and-jwt.md) , and the [adaptive-engine design doc](/docs/adaptive-engine.md) (competency persisted as a JSONB document that maps 1:1 to the engine's `CompetencyState`).
+> Reflects the decisions in [ADR 0005 (sqlc + goose)](/docs/adr/0005-sqlc-and-goose.md), [ADR 0010 (unified identity + JWT)](/docs/adr/0010-unified-identity-and-jwt.md) , and the [engine design doc](/docs/engine.md) (competency persisted as a JSONB document that maps 1:1 to the engine's `CompetencyState`).
 
 ## Overview
 
@@ -43,7 +43,7 @@ erDiagram
 
 The only access pattern in v1 is: load one user's entire competency state, run the pure engine, write the entire updated state back. Load-whole, write-whole, per user, per lesson. We never query "all users weak on `th`". Normalising to a row per `(user, key)` and `(user, ngram)` would mean hundreds of rows per user, a multi-row read to reconstruct state, and a multi-row upsert to persist - for query flexibility we never use. The JSONB document maps 1:1 to the engine's `CompetencyState`, which keeps the persistence layer thin.
 
-If cross-user ngram analytics ever become a feature, _that_ is the trigger to migrate competency into a normalised `user_item_scores` table. The same table is the right home for per-item history if user-facing per-item improvement charts or offline re-tuning ever land - but not before: the [adaptive-engine doc](adaptive-engine.md) covers why a velocity signal for anti-plateau generation is maintained online (a scalar in the JSONB doc) rather than by storing a per-item time series. Until a consumer a scalar cannot feed appears, schema follows access pattern.
+If cross-user ngram analytics ever become a feature, _that_ is the trigger to migrate competency into a normalised `user_item_scores` table. The same table is the right home for per-item history if user-facing per-item improvement charts or offline re-tuning ever land - but not before: the [engine doc](engine.md) covers why a velocity signal for anti-plateau generation is maintained online (a scalar in the JSONB doc) rather than by storing a per-item time series. Until a consumer a scalar cannot feed appears, schema follows access pattern.
 
 The `competency` document shape (this is exactly the engine's `CompetencyState`):
 
