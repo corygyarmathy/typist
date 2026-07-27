@@ -21,7 +21,7 @@ This is your first phase of genuine _application logic_ - the part that makes th
 - **Scaffolding already exists** as stubs with `TODO(phase-3)` markers - we fill these in, we don't create the packages from scratch:
   - `internal/adaptive/engine.go` - _step 1 complete:_ now holds the package doc, the constants block, and the two entry-point signatures as a TODO comment. The domain types moved to `internal/adaptive/types.go` (see step 1).
   - `internal/adaptive/types.go` - _added in step 1:_ the engine's vocabulary - `ItemScore`, `CompetencyState`, `Observation`, `Result`, `Lesson`, `Candidate`, and the `Corpus` interface.
-  - `internal/adaptive/scoring.go` - a TODO comment listing the scoring/decay/threshold work.
+  - `internal/adaptive/scoring.go` - _step 2 complete:_ `instant`, `updateScore` and `decayedScore`, with `scoring_test.go` covering the four invariants below. The threshold constants it originally listed live in `engine.go`'s block and are consumed by step 3, not here.
   - `internal/adaptive/engine_test.go` - a skipped placeholder test and a list of test categories.
   - `internal/corpus/corpus.go` - `Provider` an empty struct with a TODO to `go:embed` the generated artifact and implement four methods. (`Candidate` used to live here; step 1 moved it to `adaptive`.)
 - **`cmd/corpusgen` does not exist yet.** It is created in this phase (the corpus track, below).
@@ -138,17 +138,19 @@ const ( /* wAccuracy, wSpeed, alpha, thresholds, ... — the spec's table */ )
 
 ```go
 // instant score for one item's observation this lesson: accuracy-weighted, [0,1].
-func instant(o Observation, targetWPM int) float64
+func instant(o Observation, targetWPM int) (score float64, ok bool)
 // fold an observation into an item's stored score: EMA of instant, bump Samples,
 // set LastPracticed. New item (Samples==0) ⇒ Score = instant.
-func updateScore(prev ItemScore, o Observation, targetWPM int, now time.Time) ItemScore
+func updateScore(prev ItemScore, o Observation, targetWPM int, now time.Time) (ItemScore, bool)
 // effective score at read time: raw Score decayed by age since LastPracticed.
 func decayedScore(s ItemScore, now time.Time) float64
 ```
 
+> **Decided during the step: the two folding functions return `(value, ok)`, not a bare value** _(Cory, 2026-07-27)_. The three degenerate inputs (`Attempts == 0`, `TotalMillis == 0`, `targetWPM == 0`) are caller bugs, so the tempting shape was a guard that returns `0`. But `0` is a legal score, so that sentinel is indistinguishable from "typed abysmally" and folds silently into persisted state - and it invites the caller to ignore the problem, which is exactly what it did once during this step, letting a mistyped test fixture pass by comparing a real score against the sentinel. The bool makes the invalid case something a caller must handle or explicitly discard. On `!ok`, `updateScore` returns `prev` unchanged so that discarding it no-ops rather than erasing the item's history. The guard is kept even though `ApplyResult` should reject these upstream, because `targetWPM == 0` is integer division and would panic rather than merely return a wrong number - and a zero-valued `CompetencyState` has `TargetWPM: 0`. An earlier attempt logged the rejection via `slog`; that was removed as a violation of the package's no-I/O rule (see [`../adaptive-engine.md`](../adaptive-engine.md#scoring)) - the engine runs in-process inside the TUI, where the default handler writes over the render.
+
 **The design question:** decay is applied _at read time_, never stored (the stored `Score` stays honest; decay is a lens). Internalise _why_ - it means no background job, and it's a pure function of two timestamps, so it's deterministic and trivially testable. Which functions should call `decayedScore` and which the raw `Score`? (Selection and unlocking read decayed; the EMA update reads raw.)
 
-**Prove it** (`scoring_test.go`): a perfect-but-slow observation scores higher than a fast-but-error-laden one (accuracy weight dominates - this is the headline invariant); a brand-new item's score equals its `instant`; two identical items with different `LastPracticed` - the staler one has the lower `decayedScore`. **Checkpoint:** these green = the math core is trustworthy.
+**Prove it** (`scoring_test.go`): a perfect-but-slow observation scores higher than a fast-but-error-laden one (accuracy weight dominates - this is the headline invariant); a brand-new item's score equals its `instant`; two identical items with different `LastPracticed` - the staler one has the lower `decayedScore`; each of the three degenerate inputs reports `!ok` from both folding functions. Write the first three as _relations between two calls_ rather than against hand-computed constants, so they survive retuning and stay sensitive to the thing under test - the headline one should go red if `wAccuracy` and `wSpeed` are swapped. **Checkpoint:** these green = the math core is trustworthy.
 
 ### Step 3 - Progression predicates (`progression.go`)
 

@@ -106,7 +106,9 @@ speed      = clamp(targetMs / meanKeyMs, 0, 1)                // 1.0 == at/above
 instant    = W_ACCURACY*accuracy + W_SPEED*speed             // [0,1]
 ```
 
-`W_ACCURACY = 0.7`, `W_SPEED = 0.3`: accuracy dominates, because for _learning_ you want correctness first and speed second. (The 5-chars-per-word convention is the standard WPM definition.)
+`W_ACCURACY = 0.7`, `W_SPEED = 0.3`: accuracy dominates, because for _learning_ you want correctness first and speed second. (The 5-chars-per-word convention is the standard WPM definition; it lives in the constants table as `charsPerWord` because a different corpus or language could justify changing it, unlike the millisecond conversion beside it, which is arithmetic.)
+
+**Invalid observations are rejected, not scored.** `Attempts == 0`, `TotalMillis == 0`, or `TargetWPM == 0` are all caller bugs rather than runtime conditions, but none of them has a meaningful score: the first two make the formulas undefined, and the third would divide by zero. So `instant` and `updateScore` return a `(value, ok bool)` pair and report `ok == false` for these inputs, rather than returning a bare `0` that is indistinguishable from a legitimately terrible score and would fold silently into stored state. On `!ok`, `updateScore` returns `prev` unchanged, so a caller that ignores the flag no-ops instead of erasing the item's history. Nothing is logged - the engine performs no I/O (it runs in-process inside the TUI, where a default `slog` handler would write over the render), so surfacing a malformed submission to a user is the calling service's job, at the boundary where the `Result` is unmarshalled.
 
 The stored score is an exponential moving average of `instant`, which gives keybr's "confidence based on recent performance" behaviour - recent runs matter more, but one bad run doesn't erase history:
 
