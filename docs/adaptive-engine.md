@@ -253,6 +253,7 @@ Keep these in one block so they are easy to find, tune, and explain. The
 | `lambdaKey`            | 3.0     | weak-key boost in generation                          |
 | `lambdaNgram`          | 0.5→3.0 | weak-ngram boost; phase-scaled                        |
 | `lessonWords`          | 10-15   | words per generated lesson                            |
+| `charsPerWord`         | 5       | assumed chars. per avg. word, used to calc. WPM       |
 
 These are guesses, not gospel. Tune them against simulated users (below).
 

@@ -58,6 +58,7 @@ const (
 	lambdaKey            = 3.0                // weak-key boost in generation
 	lambdaNgram          = 0.5                // weak-ngram boost; phase-scaled
 	lessonWords          = 15                 // words per generated lesson
+	charsPerWord         = 5                  // assumed chars per average word, used to calc. WPM
 )
 
 // The engine's two entry points are package-level pure functions (not methods
