@@ -3,15 +3,15 @@
 - **Status:** Accepted
 - **Date:** 2026-06-22
 - **Related Artefacts**:
-  - [Adaptive-Engine Design Doc](/docs/adaptive-engine.md)
+  - [Engine Design Doc](/docs/engine.md)
   - [ADR 0014](/docs/adr/0014-engine-as-library-state-follows-identity.md)
   - [`Schema.md`](/docs/schema.md)
 
 ## Context
 
-The adaptive engine depends on a `Corpus` (see the [adaptive-engine design doc](/docs/adaptive-engine.md)): a frequency order over letters, a frequency-ranked list of ngrams, and a transition graph for pseudo-word generation. It was undecided whether the corpus data would be stored in the database or not.
+The adaptive engine depends on a `Corpus` (see the [engine design doc](/docs/engine.md)): a frequency order over letters, a frequency-ranked list of ngrams, and a transition graph for pseudo-word generation. It was undecided whether the corpus data would be stored in the database or not.
 
-A second point is worth settling explicitly because it removes a worry about feasibility: the corpus is training data for _generation_, not a dictionary that lessons are drawn from. The generator synthesises english-like pseudo-words by sampling the transition graph under constraints (only unlocked keys, weighted toward weak items); it never selects whole words from a list. There is therefore no "the wordlist must contain a word that satisfies this lesson" requirement - the generator cannot starve, which is the whole reason it is preferred over a real-word dictionary filter (see the [adaptive-engine design doc](/docs/adaptive-engine.md)).
+A second point is worth settling explicitly because it removes a worry about feasibility: the corpus is training data for _generation_, not a dictionary that lessons are drawn from. The generator synthesises english-like pseudo-words by sampling the transition graph under constraints (only unlocked keys, weighted toward weak items); it never selects whole words from a list. There is therefore no "the wordlist must contain a word that satisfies this lesson" requirement - the generator cannot starve, which is the whole reason it is preferred over a real-word dictionary filter (see the [engine design doc](/docs/engine.md)).
 
 ## Decision
 

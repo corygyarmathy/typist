@@ -1,4 +1,4 @@
-// Package adaptive contains the lesson-selection and difficulty engine.
+// Package engine contains the adaptive lesson-selection and difficulty engine.
 //
 // This is the heart of the application's interesting domain logic. It takes
 // a snapshot of a user's competency (per-key and per-ngram scores) plus the
@@ -29,12 +29,12 @@
 //   - Scoring: given a completed lesson result, compute the score delta
 //     for each key and ngram involved. Accuracy-weighted, with diminishing
 //     returns on items already well-mastered.
-package adaptive
+package engine
 
 import "time"
 
 // The 'magic numbers' tuning the engine behaviour. Shared by every behaviour
-// file in the package; the design doc's table (docs/adaptive-engine.md,
+// file in the package; the design doc's table (docs/engine.md,
 // "Tunable constants") lists the same set with the same defaults.
 //
 // Implemented as const block rather than a more complex Params struct for
@@ -63,7 +63,7 @@ const (
 
 // The engine's two entry points are package-level pure functions (not methods
 // on a struct): all randomness and the current time are injected so tests are
-// deterministic. See docs/adaptive-engine.md for the full spec.
+// deterministic. See docs/engine.md for the full spec.
 //
 // TODO(phase-3):
 //   - NextLesson(s CompetencyState, c Corpus, now time.Time, r *rand.Rand) Lesson

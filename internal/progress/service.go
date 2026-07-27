@@ -22,7 +22,7 @@ func NewInitialiser(tx pgx.Tx) *Initialiser {
 }
 
 func (s *Initialiser) CreateInitial(ctx context.Context, userID uuid.UUID) error {
-	// TODO(phase-3): replace with adaptive.InitialCompetency()
+	// TODO(phase-3): replace with engine.InitialCompetency()
 	initialCompetency := []byte(`{"version":0}`)
 
 	return s.repo.CreateUserProgress(ctx, userID, initialCompetency)

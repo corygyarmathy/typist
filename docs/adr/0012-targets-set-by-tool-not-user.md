@@ -23,7 +23,7 @@ The target speed (`TargetWPM`) is the one concrete numeric threshold the engine 
 - **Raise gate.** Once **every** key is unlocked **and** the mean key `decayedScore` is at or above `TARGET_RAISE_SCORE` (0.85), the engine raises `TargetWPM` by `TARGET_WPM_STEP` (5 WPM). Because the underlying instant score is accuracy-weighted (`W_ACCURACY` 0.7 / `W_SPEED` 0.3), clearing that bar already implies the user is both accurate and at-or-near the current target speed - so the raise is gated _mostly on accuracy, with speed contributing_, as intended. At most one raise per completed lesson, mirroring the one-unlock-per-call discipline.
 - **Self-limiting.** There is no hard cap. The target rises only while the user keeps clearing the bar at the new speed; when they stop improving, mean score falls below the gate and the target holds. This delivers the "constant small challenge - never held back, never pushed past demonstrated ability" intent without any manual control.
 
-The concrete constants, evaluation point, and order of operations are specified in the [adaptive-engine design doc](/docs/adaptive-engine.md) (the engine spec), keeping this ADR the _why_ and that doc the _how_.
+The concrete constants, evaluation point, and order of operations are specified in the [engine design doc](/docs/engine.md) (the engine spec), keeping this ADR the _why_ and that doc the _how_.
 
 ## Consequences
 
@@ -35,4 +35,4 @@ The concrete constants, evaluation point, and order of operations are specified 
 **Negative**
 
 - Decreased flexibility for the user, they do not have the ability to manually set targets / thresholds.
-- The raise gate's constants (`TARGET_RAISE_SCORE`, `TARGET_WPM_STEP`) need tuning: too eager and the target outruns the user, too slack and progress stalls. Validated against the simulated-user harness in the [adaptive-engine design doc](/docs/adaptive-engine.md) rather than guessed.
+- The raise gate's constants (`TARGET_RAISE_SCORE`, `TARGET_WPM_STEP`) need tuning: too eager and the target outruns the user, too slack and progress stalls. Validated against the simulated-user harness in the [engine design doc](/docs/engine.md) rather than guessed.

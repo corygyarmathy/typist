@@ -40,7 +40,7 @@ make fmt           # gofmt -w . && go mod tidy
 make build         # go build -o bin/server ./cmd/server
 
 # Run a single test package
-go test -run TestName ./internal/adaptive/...
+go test -run TestName ./internal/engine/...
 
 # Code generation (run after changing SQL queries or openapi.yaml)
 make sqlc          # regenerates internal/db/ from queries.sql files
@@ -80,7 +80,7 @@ A Go modular monolith. Three binaries share the domain code:
 
 Each context follows a strict three-layer shape: `handler.go` (HTTP only) → `service.go` (business logic) → `repository.go` (SQL via sqlc). Dependencies point downward; wiring happens in `cmd/server/main.go`.
 
-### `internal/adaptive` — the engine
+### `internal/engine` — the adaptive lesson engine
 
 Pure functions, no I/O. Takes a `CompetencyState` snapshot plus a `Corpus` interface and returns the next lesson, or folds a completed result back into state. All randomness is injected (`*rand.Rand`) so tests are deterministic. The engine runs in two places: server-side (identified users, state in Postgres) and client-side in-process (anonymous/offline users, ephemeral state).
 

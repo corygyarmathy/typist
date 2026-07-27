@@ -1,6 +1,6 @@
-# Adaptive Engine Design
+# Engine Design
 
-> Design doc for `internal/adaptive`. Covers the competency model, scoring, progression, and lesson generation. This is the spec the package implements and the tests assert against.
+> Design doc for `internal/engine`. Covers the competency model, scoring, progression, and lesson generation. This is the spec the package implements and the tests assert against.
 
 ## Summary
 
@@ -222,7 +222,7 @@ func ApplyResult(s CompetencyState, res Result, now time.Time) CompetencyState
 
 ### The Corpus dependency
 
-The engine takes `Corpus` as a parameter so the dependency points downward (`internal/corpus` owns the data; `adaptive` consumes an interface):
+The engine takes `Corpus` as a parameter so the dependency points downward (`internal/corpus` owns the data; `engine` consumes an interface):
 
 ```go
 type Corpus interface {
@@ -236,7 +236,7 @@ type Corpus interface {
 ## Tunable constants
 
 Keep these in one block so they are easy to find, tune, and explain. The
-`Constant` column is the Go identifier as declared in `internal/adaptive/engine.go`.
+`Constant` column is the Go identifier as declared in `internal/engine/engine.go`.
 
 | Constant               | Default | Meaning                                               |
 | ---------------------- | ------- | ----------------------------------------------------- |

@@ -1,4 +1,4 @@
-package adaptive
+package engine
 
 import "time"
 
@@ -73,7 +73,7 @@ type Lesson struct {
 // It is declared here rather than in internal/corpus because it is part of the
 // Corpus interface's vocabulary: a consumer-owned interface must own its
 // signatures whole, since the type a method returns is as much a part of the
-// contract as the method's name. Keeping it here is what lets `adaptive` build
+// contract as the method's name. Keeping it here is what lets `engine` build
 // and test against a hand-written fake Corpus with internal/corpus absent
 // entirely (the engine-first build, phase-3 plan Decision 2). The implementer
 // imports this package to speak its vocabulary, so the dependency arrow points
@@ -89,7 +89,7 @@ type Candidate struct {
 //
 // The engine declares it and receives it as a parameter; internal/corpus owns
 // the data and implements it. The consumer owns the interface, which is what
-// keeps the dependency pointing downward - `adaptive` never imports `corpus`.
+// keeps the dependency pointing downward - `engine` never imports `corpus`.
 type Corpus interface {
 	StartingKeys() int
 	KeyOrder() []rune                       // frequency order for unlocking
