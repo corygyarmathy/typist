@@ -162,8 +162,8 @@ func decayedScore(s ItemScore, now time.Time) float64
 func activeNgrams(s CompetencyState, c Corpus) []string          // within tier AND all keys unlocked
 func nextKeyToUnlock(s CompetencyState, c Corpus, now time.Time) (rune, bool)
 func shouldAdvanceNgramTier(s CompetencyState, c Corpus, now time.Time) bool
-func shouldRaiseTarget(s CompetencyState, now time.Time) bool
-func phaseIsNgrams(s CompetencyState, now time.Time) bool        // the soft key→ngram transition
+func shouldRaiseTarget(s CompetencyState, c Corpus, now time.Time) bool
+func phaseIsNgrams(s CompetencyState, c Corpus, now time.Time) bool        // the soft key→ngram transition
 ```
 
 **The design question:** every predicate is an "and over all items" gate with **two** conditions - a `decayedScore` threshold _and_ a `minSamples` floor. Why does the sample floor exist? (A lucky high score off three keystrokes must not unlock.) Getting the "for all unlocked keys" quantifier right - and unlocking exactly _one_ key at a time in `KeyOrder` - is the subtle part.
