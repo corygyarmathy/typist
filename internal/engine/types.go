@@ -39,7 +39,7 @@ type ItemScore struct {
 type CompetencyState struct {
 	Keys      map[rune]ItemScore
 	Ngrams    map[string]ItemScore
-	NgramTier int
+	NgramTier int // how many of the frequency-ranked ngrams are in scope
 	TargetWPM int // tool-managed speed threshold; see ADR 0012
 }
 
@@ -91,7 +91,7 @@ type Candidate struct {
 // the data and implements it. The consumer owns the interface, which is what
 // keeps the dependency pointing downward - `engine` never imports `corpus`.
 type Corpus interface {
-	StartingKeys() int
+	StartingKeys() int                      // how many keys to start unlocked with
 	KeyOrder() []rune                       // frequency order for unlocking
 	NgramsByFrequency() []string            // frequency-ranked; defines tiers
 	Transitions(context string) []Candidate // for the generator
