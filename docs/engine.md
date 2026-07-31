@@ -149,7 +149,7 @@ The `MIN_SAMPLES` gate prevents a lucky high score off too little data from unlo
 
 ### Ngram tiers
 
-Ngrams are ranked once by language frequency in the corpus. `NgramTier` says how many of that ranked list are in scope. An ngram is _active_ iff it is within the current tier **and** all its keys are unlocked.
+Ngrams are ranked once by language frequency in the corpus. `NgramTier` says how many of that ranked list are in scope. An ngram is _active_ if it is within the current tier **and** all its keys are unlocked.
 
 ```
 advance ngram tier  ⟺  for all active ngrams g:
