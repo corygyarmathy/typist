@@ -85,10 +85,6 @@ func shouldAdvanceNgramTier(s CompetencyState, c Corpus, now time.Time) bool {
 // shouldRaiseTarget reports whether the WPM target should increase, depending
 // on whether all keys are unlocked and are over the score threshold.
 func shouldRaiseTarget(s CompetencyState, c Corpus, now time.Time) bool {
-	if len(s.Keys) == 0 {
-		return false
-	}
-
 	// all keys not unlocked
 	if !keysUnlocked(string(c.KeyOrder()), s.Keys) {
 		return false
@@ -101,10 +97,6 @@ func shouldRaiseTarget(s CompetencyState, c Corpus, now time.Time) bool {
 // focused. Starts key focused. After all keys unlocked and mean decayedScore
 // above phaseThreshold, lesson become ngram focussed.
 func phaseIsNgrams(s CompetencyState, c Corpus, now time.Time) bool {
-	if len(s.Keys) == 0 {
-		return false
-	}
-
 	// all keys not unlocked
 	if !keysUnlocked(string(c.KeyOrder()), s.Keys) {
 		return false
@@ -126,6 +118,10 @@ func allMastered(items iter.Seq[ItemScore], threshold float64, now time.Time) bo
 
 // meanKeyDecayedScore returns the mean key decayed score.
 func meanKeyDecayedScore(s CompetencyState, now time.Time) float64 {
+	if len(s.Keys) == 0 {
+		return 0
+	}
+
 	var sum float64
 	for _, v := range s.Keys {
 		sum += decayedScore(v, now)
