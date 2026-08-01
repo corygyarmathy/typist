@@ -31,7 +31,10 @@
 //     returns on items already well-mastered.
 package engine
 
-import "time"
+import (
+	"maps"
+	"time"
+)
 
 // The 'magic numbers' tuning the engine behaviour. Shared by every behaviour
 // file in the package; the design doc's table (docs/engine.md,
@@ -67,4 +70,70 @@ const (
 //
 // TODO(phase-3):
 //   - NextLesson(s CompetencyState, c Corpus, now time.Time, r *rand.Rand) Lesson
-//   - ApplyResult(s CompetencyState, res Result, now time.Time) CompetencyState
+
+func ApplyResult(s CompetencyState, c Corpus, res Result, now time.Time) CompetencyState {
+	// NOTE: the progression predicates read next, not s. Otherwise the results
+	// will be unexpectedly one lesson behind.
+
+	// clone current state into local mutable object
+	next := s                      // copies NgramTier, TargetWPM by value
+	next.Keys = maps.Clone(s.Keys) // shallow == deep, ItemScore has no reference fields
+	next.Ngrams = maps.Clone(s.Ngrams)
+	if next.Keys == nil {
+		next.Keys = make(map[rune]ItemScore)
+	}
+	if next.Ngrams == nil {
+		next.Ngrams = make(map[string]ItemScore)
+	}
+
+	// update item scores
+	for k, o := range res.Keys {
+		// check if key present, prevent client from overriding state
+		if _, ok := next.Keys[k]; !ok {
+			continue
+		}
+
+		updated, ok := updateScore(s.Keys[k], o, s.TargetWPM, now)
+		if !ok {
+			// skipping, don't want to discard whole result b/c of one bad data point
+			continue
+		}
+		next.Keys[k] = updated
+	}
+
+	// Ngram activeness is derived, so compute it once.
+	active := activeNgrams(next, c)
+	inScope := make(map[string]struct{}, len(active))
+	for _, n := range active {
+		inScope[n] = struct{}{}
+	}
+
+	for ngram, o := range res.Ngrams {
+		if _, ok := inScope[ngram]; !ok {
+			continue // out of scope; ignore whatever the client sent
+		}
+
+		updated, ok := updateScore(s.Ngrams[ngram], o, s.TargetWPM, now)
+		if !ok {
+			// skipping, don't want to discard whole result b/c of one bad data point
+			continue
+		}
+		next.Ngrams[ngram] = updated
+	}
+
+	// perform unlocks / advances based on updated scores
+	if k, ok := nextKeyToUnlock(next, c, now); ok {
+		next.Keys[k] = ItemScore{}
+	}
+
+	if shouldAdvanceNgramTier(next, c, now) {
+		// clamp to prevent run-away value
+		next.NgramTier = min(len(c.NgramsByFrequency()), next.NgramTier+1)
+	}
+
+	if shouldRaiseTarget(next, c, now) {
+		next.TargetWPM += targetWPMStep
+	}
+
+	return next
+}

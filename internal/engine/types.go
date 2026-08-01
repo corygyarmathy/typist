@@ -32,10 +32,23 @@ type ItemScore struct {
 // point in time: per-key and per-ngram score state, the current ngram tier,
 // and the tool-managed speed target.
 //
-// Presence of a key in `Keys` means it is unlocked; same for `Ngrams`. There
-// is no separate set of unlocked items - membership is the unlock. This is the
-// JSONB document persisted per user (see docs/schema.md); it maps 1:1 to the
-// engine's working type.
+// The two maps do NOT mean the same thing, despite their matching shapes:
+//
+//   - Keys is the unlock set. Presence means unlocked; there is no separate
+//     set of unlocked keys - membership is the unlock, and nextKeyToUnlock is
+//     the only thing that inserts.
+//   - Ngrams is a score cache, not an unlock set. Which ngrams are in scope is
+//     derived on read by activeNgrams from (NgramTier, unlocked keys); a
+//     missing entry just means "in scope but never practised", which scores as
+//     the zero ItemScore. Presence therefore means practised, not available.
+//
+// The asymmetry is deliberate: keys are a small, fixed, totally-ordered
+// curriculum where being unlocked is the interesting state, whereas ngram
+// availability is a function of the key set and so cannot drift out of sync
+// with it if it is never stored.
+//
+// This is the JSONB document persisted per user (see docs/schema.md); it maps
+// 1:1 to the engine's working type.
 type CompetencyState struct {
 	Keys      map[rune]ItemScore
 	Ngrams    map[string]ItemScore
