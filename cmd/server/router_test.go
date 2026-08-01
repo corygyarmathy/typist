@@ -66,7 +66,7 @@ func TestRouter(t *testing.T) {
 			// The auth gate rejects before the handler runs, so this needs no
 			// progress service wired in.
 			"protected route without a token",
-			"GET", "/progress",
+			"GET", "/api/v1/progress",
 			readyOK,
 			401,
 			"application/problem+json",

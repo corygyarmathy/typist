@@ -30,17 +30,26 @@ servers:
 security:
   - bearerAuth: [] # default; public ops override with: 'security: []'
 
+# Path convention: everything under /api/v1 is the versioned public contract.
+# Operational endpoints (/healthz, /readyz, and /metrics once wired) stay at the
+# root - they are probe/scrape targets, not part of the API surface, and must
+# not move when the contract version does.
+#
+# The prefix lives in these path keys rather than in oapi-codegen's BaseURL
+# option, because BaseURL prefixes every route uniformly and would drag the
+# probes under /api/v1 with it.
+#
 # Phase 4 work: define paths as the handlers are built.
 # Potential initial surface:
 #
-#   POST   /auth/register
-#   POST   /auth/login
-#   POST   /auth/refresh
+#   POST   /api/v1/auth/register
+#   POST   /api/v1/auth/login
+#   POST   /api/v1/auth/refresh
 #
-#   GET    /progress              - current competency snapshot
-#   GET    /lessons/next          - generate next lesson
-#   POST   /sessions              - submit a completed session result
-#   GET    /sessions              - list past sessions (paginated)
+#   GET    /api/v1/progress        - current competency snapshot
+#   GET    /api/v1/lessons/next    - generate next lesson
+#   POST   /api/v1/sessions        - submit a completed session result
+#   GET    /api/v1/sessions        - list past sessions (paginated)
 #
 # Generate server interfaces with oapi-codegen and implement them in
 # each domain package's handler.go.
@@ -84,7 +93,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
-  /auth/register:
+  /api/v1/auth/register:
     post:
       summary: Register user
       description: >
@@ -118,7 +127,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
-  /auth/login:
+  /api/v1/auth/login:
     post:
       summary: Login user
       description: >
@@ -152,7 +161,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
-  /progress:
+  /api/v1/progress:
     get:
       summary: Return user's current competency state.
       description: >

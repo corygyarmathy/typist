@@ -102,7 +102,7 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 	body := fmt.Sprintf(`{"email":%q,"password":"correct horse battery staple"}`, email)
 
 	// 1. Register -> 200; decode TokenResponse; token non-empty
-	rec := do(http.MethodPost, "/auth/register", body, "") // no token yet
+	rec := do(http.MethodPost, "/api/v1/auth/register", body, "") // no token yet
 	if rec.Code != http.StatusOK {
 		t.Fatalf("register: status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
 	}
@@ -116,7 +116,7 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 	}
 
 	// 2. Login   -> 200; decode; token non-empty
-	rec = do(http.MethodPost, "/auth/login", body, "") // same credentials, no token yet
+	rec = do(http.MethodPost, "/api/v1/auth/login", body, "") // same credentials, no token yet
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login: status = %d, want %v (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
 	}
@@ -129,8 +129,8 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 		t.Fatal("login: got empty token")
 	}
 
-	// 3. GET /progress WITH the token -> 200, body is the seeded competency JSON
-	rec = do(http.MethodGet, "/progress", "", loginToken.Token)
+	// 3. GET /api/v1/progress WITH the token -> 200, body is the seeded competency JSON
+	rec = do(http.MethodGet, "/api/v1/progress", "", loginToken.Token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("progress: status = %d, want %v (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
 	}
@@ -143,8 +143,8 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 		t.Fatal("progress: got empty progress response")
 	}
 
-	// 4. GET /progress with a garbage token -> 401 problem+json
-	rec = do(http.MethodGet, "/progress", "", "not-a-real-jwt")
+	// 4. GET /api/v1/progress with a garbage token -> 401 problem+json
+	rec = do(http.MethodGet, "/api/v1/progress", "", "not-a-real-jwt")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("progress: status = %d, want %v (body: %s)", rec.Code, http.StatusUnauthorized, rec.Body.String())
 	}
@@ -160,8 +160,8 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 		t.Fatal("progress: got empty progress response")
 	}
 
-	// 5. GET /progress with NO token → 401
-	rec = do(http.MethodGet, "/progress", "", "")
+	// 5. GET /api/v1/progress with NO token → 401
+	rec = do(http.MethodGet, "/api/v1/progress", "", "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("progress: status = %d, want %v (body: %s)", rec.Code, http.StatusUnauthorized, rec.Body.String())
 	}
