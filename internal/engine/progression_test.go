@@ -6,54 +6,6 @@ import (
 	"time"
 )
 
-// Compile-time assertion that the fake satisfies the interface
-var _ Corpus = fakeCorpus{}
-
-type fakeCorpus struct {
-	ngramsByFrequency []string // frequency-ordered ngrams
-	keyOrder          []rune   // frequency-ordered keys
-}
-
-func (f fakeCorpus) StartingKeys() int {
-	return 0 // ignored in this test
-}
-
-func (f fakeCorpus) KeyOrder() []rune { // frequency order for unlocking
-	return f.keyOrder
-}
-
-func (f fakeCorpus) NgramsByFrequency() []string { // frequency-ranked; defines tiers
-	return f.ngramsByFrequency
-}
-
-func (f fakeCorpus) Transitions(context string) []Candidate { // for the generator
-	return nil // ignored in this test
-}
-
-func keysFrom(s string) map[rune]ItemScore {
-	keys := make(map[rune]ItemScore)
-	for _, r := range s {
-		keys[r] = ItemScore{}
-	}
-	return keys
-}
-
-func keysScoreFrom(s string, score float64, samples int, lastPracticed time.Time) map[rune]ItemScore {
-	keys := make(map[rune]ItemScore)
-	for _, r := range s {
-		keys[r] = ItemScore{Score: score, Samples: samples, LastPracticed: lastPracticed}
-	}
-	return keys
-}
-
-func ngramsScoreFrom(n []string, score float64, samples int, lastPracticed time.Time) map[string]ItemScore {
-	ngrams := make(map[string]ItemScore)
-	for _, s := range n {
-		ngrams[s] = ItemScore{Score: score, Samples: samples, LastPracticed: lastPracticed}
-	}
-	return ngrams
-}
-
 func TestKeysUnlocked(t *testing.T) {
 	tests := []struct {
 		name         string
