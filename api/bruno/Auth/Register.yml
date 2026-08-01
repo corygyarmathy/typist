@@ -5,7 +5,7 @@ info:
 
 http:
   method: POST
-  url: "{{baseUrl}}/auth/register"
+  url: "{{baseUrl}}/api/v1/auth/register"
   auth:
     type: none
   headers:

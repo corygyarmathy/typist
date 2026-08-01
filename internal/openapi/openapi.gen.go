@@ -98,17 +98,17 @@ type RegisterUserJSONRequestBody = RegisterRequest
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// LoginUser Login user
-	// (POST /auth/login)
+	// (POST /api/v1/auth/login)
 	LoginUser(w http.ResponseWriter, r *http.Request)
 	// RegisterUser Register user
-	// (POST /auth/register)
+	// (POST /api/v1/auth/register)
 	RegisterUser(w http.ResponseWriter, r *http.Request)
+	// GetProgress Return user's current competency state.
+	// (GET /api/v1/progress)
+	GetProgress(w http.ResponseWriter, r *http.Request)
 	// GetHealthz Liveness check
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
-	// GetProgress Return user's current competency state.
-	// (GET /progress)
-	GetProgress(w http.ResponseWriter, r *http.Request)
 	// GetReadyz Readiness check
 	// (GET /readyz)
 	GetReadyz(w http.ResponseWriter, r *http.Request)
@@ -151,11 +151,11 @@ func (siw *ServerInterfaceWrapper) RegisterUser(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
-// GetHealthz operation middleware
-func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Request) {
+// GetProgress operation middleware
+func (siw *ServerInterfaceWrapper) GetProgress(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetHealthz(w, r)
+		siw.Handler.GetProgress(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -165,11 +165,11 @@ func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
-// GetProgress operation middleware
-func (siw *ServerInterfaceWrapper) GetProgress(w http.ResponseWriter, r *http.Request) {
+// GetHealthz operation middleware
+func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetProgress(w, r)
+		siw.Handler.GetHealthz(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -315,9 +315,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.GetHealthz)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/readyz", wrapper.GetReadyz)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/register", wrapper.RegisterUser)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/login", wrapper.LoginUser)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/progress", wrapper.GetProgress)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/register", wrapper.RegisterUser)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/login", wrapper.LoginUser)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/progress", wrapper.GetProgress)
 
 	return m
 }
@@ -422,27 +422,6 @@ func (response RegisterUser409ApplicationProblemPlusJSONResponse) VisitRegisterU
 	return err
 }
 
-type GetHealthzRequestObject struct {
-}
-
-type GetHealthzResponseObject interface {
-	VisitGetHealthzResponse(w http.ResponseWriter) error
-}
-
-type GetHealthz200JSONResponse Health
-
-func (response GetHealthz200JSONResponse) VisitGetHealthzResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetProgressRequestObject struct {
 }
 
@@ -474,6 +453,27 @@ func (response GetProgress401ApplicationProblemPlusJSONResponse) VisitGetProgres
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHealthzRequestObject struct {
+}
+
+type GetHealthzResponseObject interface {
+	VisitGetHealthzResponse(w http.ResponseWriter) error
+}
+
+type GetHealthz200JSONResponse Health
+
+func (response GetHealthz200JSONResponse) VisitGetHealthzResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -516,17 +516,17 @@ func (response GetReadyz503ApplicationProblemPlusJSONResponse) VisitGetReadyzRes
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// LoginUser Login user
-	// (POST /auth/login)
+	// (POST /api/v1/auth/login)
 	LoginUser(ctx context.Context, request LoginUserRequestObject) (LoginUserResponseObject, error)
 	// RegisterUser Register user
-	// (POST /auth/register)
+	// (POST /api/v1/auth/register)
 	RegisterUser(ctx context.Context, request RegisterUserRequestObject) (RegisterUserResponseObject, error)
+	// GetProgress Return user's current competency state.
+	// (GET /api/v1/progress)
+	GetProgress(ctx context.Context, request GetProgressRequestObject) (GetProgressResponseObject, error)
 	// GetHealthz Liveness check
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
-	// GetProgress Return user's current competency state.
-	// (GET /progress)
-	GetProgress(ctx context.Context, request GetProgressRequestObject) (GetProgressResponseObject, error)
 	// GetReadyz Readiness check
 	// (GET /readyz)
 	GetReadyz(ctx context.Context, request GetReadyzRequestObject) (GetReadyzResponseObject, error)
@@ -633,30 +633,6 @@ func (sh *strictHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// GetHealthz operation middleware
-func (sh *strictHandler) GetHealthz(w http.ResponseWriter, r *http.Request) {
-	var request GetHealthzRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetHealthz(ctx, request.(GetHealthzRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetHealthz")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetHealthzResponseObject); ok {
-		if err := validResponse.VisitGetHealthzResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // GetProgress operation middleware
 func (sh *strictHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
 	var request GetProgressRequestObject
@@ -674,6 +650,30 @@ func (sh *strictHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProgressResponseObject); ok {
 		if err := validResponse.VisitGetProgressResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHealthz operation middleware
+func (sh *strictHandler) GetHealthz(w http.ResponseWriter, r *http.Request) {
+	var request GetHealthzRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHealthz(ctx, request.(GetHealthzRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHealthz")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHealthzResponseObject); ok {
+		if err := validResponse.VisitGetHealthzResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

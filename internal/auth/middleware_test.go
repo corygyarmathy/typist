@@ -30,7 +30,7 @@ func TestRequireAuth(t *testing.T) {
 
 	const (
 		publicPattern    = "GET /healthz"
-		protectedPattern = "GET /progress"
+		protectedPattern = "GET /api/v1/progress"
 	)
 
 	tests := map[string]struct {
@@ -100,7 +100,7 @@ func TestRequireAuth(t *testing.T) {
 			// b) the request. Pattern is normally set by http.ServeMux once it
 			// has matched a route; setting it directly is what lets this test
 			// exercise the gate without standing up a mux.
-			req := httptest.NewRequest(http.MethodGet, "/progress", nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/progress", nil)
 			req.Pattern = tc.pattern
 			// set the Authorization header if the case has one:
 			if tc.authHeader != "" {

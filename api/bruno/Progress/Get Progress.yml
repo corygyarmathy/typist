@@ -5,7 +5,7 @@ info:
 
 http:
   method: GET
-  url: "{{baseUrl}}/progress"
+  url: "{{baseUrl}}/api/v1/progress"
   auth:
     type: bearer
     token: "{{token}}"
