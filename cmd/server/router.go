@@ -16,6 +16,23 @@ import (
 // unbounded body from being read into memory, not a per-route limit.
 const maxRequestBodyBytes = 1 << 20 // 1 MiB
 
+// publicRoutes lists the operations that may be served without a bearer token,
+// keyed by http.ServeMux pattern (the value r.Pattern carries after routing).
+//
+// This mirrors api/openapi.yaml, where the top-level `security` block makes
+// bearerAuth the default and public operations opt out with `security: []`.
+// auth.RequireAuth treats anything absent from this set as protected, so the
+// failure mode for a forgotten entry is a 401, not an unguarded endpoint.
+//
+// TestRouter_SpecDrift asserts this set equals the spec's `security: []`
+// operations, so the two cannot diverge silently.
+var publicRoutes = map[string]bool{
+	"GET /healthz":        true,
+	"GET /readyz":         true,
+	"POST /auth/register": true,
+	"POST /auth/login":    true,
+}
+
 // chain avoids having to nest each middleware handler, increases readability.
 //
 // Reverses order so that the first middleware is the outermost (runs first).
@@ -76,11 +93,12 @@ func Router(api *API, v auth.Validator) http.Handler {
 			},
 		},
 	)
+
 	handler := openapi.HandlerWithOptions(
 		si,
 		openapi.StdHTTPServerOptions{
 			BaseRouter:  mux,
-			Middlewares: []openapi.MiddlewareFunc{auth.RequireAuth(v)},
+			Middlewares: []openapi.MiddlewareFunc{auth.RequireAuth(v, publicRoutes)},
 		})
 
 	// Middleware order (outer -> inner): RequestID, Logging, Recovery, MaxBytes.
