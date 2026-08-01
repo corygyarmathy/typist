@@ -215,8 +215,14 @@ func NextLesson(s CompetencyState, c Corpus, now time.Time, r *rand.Rand) Lesson
 
 // ApplyResult folds a completed lesson's result into competency state and
 // applies any unlocks/tier advances. Pure: now is passed in, no clock read.
-func ApplyResult(s CompetencyState, res Result, now time.Time) CompetencyState
+func ApplyResult(s CompetencyState, c Corpus, res Result, now time.Time) CompetencyState
 ```
+
+Both entry points take `c Corpus`. This is easy to miss for `ApplyResult` - folding a
+result into state reads as self-contained, and the scoring half genuinely is - but the
+progression half is not: unlocking asks _which key comes next_ and _how deep does the
+ngram list go_, and only the corpus knows. The parameter is visible rather than hidden
+in a struct field because the engine's functions are package-level and pure.
 
 `ApplyResult` order of operations: update each observed item's `Score`, `Samples`, `LastPracticed`; then evaluate the key-unlock condition (unlock at most one key per call); then evaluate the ngram-tier condition; then evaluate the target-WPM raise (at most one step per call). Unlocking after scoring means a lesson's own result can trigger the unlock it earned.
 
