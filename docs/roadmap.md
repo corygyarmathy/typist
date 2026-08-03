@@ -77,6 +77,7 @@ Multi-stage Dockerfile, compose with seeded dev placeholders, verify the README 
   - `minLength` / `maxLength` on passwords would move to the spec, making `auth.MinPasswordLen` a derived value rather than the source of truth. Decide who owns it before starting.
   - Validator errors need an `ErrorHandler` mapping into `problem+json`, or error bodies become inconsistent with [ADR 0019](adr/0019-stdlib-http-router.md).
   - `kin-openapi` is pre-v1 and breaks between minor versions; this adds it as a direct dependency ([ADR 0017](adr/0017-hybrid-dependency-management.md)).
+- Upgrade openapi version to 3.1
 
 ## Sequencing notes
 
