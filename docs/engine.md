@@ -190,18 +190,23 @@ For each step, given the current context (the previous `n-1` characters):
 
 ```
 candidates = corpus.Transitions(context)          // next chars + base frequency,
-                                                   // already restricted to the language
+                                                  // already restricted to the language
 for each candidate c forming ngram g = context+c:
     if any key in g is not unlocked: skip
     w(c) = baseFreq(g)
-         * (1 + LAMBDA_KEY   * need(c))            // boost weak keys
-         * (1 + LAMBDA_NGRAM * need(g))            // boost weak ngrams (phase-scaled)
+         * (1 + LAMBDA_KEY   * need(c))           // boost weak keys
+         * (1 + LAMBDA_NGRAM * need(g))           // boost weak ngrams, and only
+                                                  // when g is active (see below)
 sample next char by w(c) using the injected rand
 ```
 
-where `need(item) = 1 - decayedScore(item)` for known items, and `need = 1.0` for not-yet-practiced active items (so newly unlocked content surfaces hard, matching keybr's behaviour of front-loading a new letter). Insert word boundaries to hit a target word-length distribution; continue until 10-15 words are produced. Record the high-`need` items in `Lesson.Targets`.
+where `need(item) = 1 - decayedScore(item)` for known items, and `need = 1.0` for not-yet-practiced active items (so newly unlocked content surfaces hard, matching keybr's behaviour of front-loading a new letter). Insert word boundaries to hit a target word-length distribution; continue until `lessonWords` words are produced. Record the highest-`need` items in `Lesson.Targets`.
 
-`LAMBDA_KEY ≈ 3`, `LAMBDA_NGRAM ≈ 0.5` in `PhaseKeys` ramping to `≈ 3` in `PhaseNgrams`.
+`LAMBDA_KEY ≈ 3`, `LAMBDA_NGRAM ≈ 0.5` in `PhaseKeys` ramping to `≈ 3` in `PhaseNgrams`. Because `phaseIsNgrams` is a boolean rather than a ramp, the implementation spells the two ends as separate constants (`lambdaNgramKeyPhase`, `lambdaNgramNgramPhase`) and selects between them once per lesson.
+
+**The ngram factor applies only to _active_ ngrams.** The "active" qualifier on `need` above is load-bearing, and the pseudocode's unconditional multiply is not safe to read literally. `need` is `1 - decayedScore`, and an ngram outside the current tier has no stored score, so it evaluates to the maximum `1.0` - permanently, because `ApplyResult` discards observations for out-of-scope ngrams and nothing can ever lower it. Ungated, every untracked bigram would outrank a mastered in-scope one forever, and `NgramTier` would stop meaning anything for generation. So the factor is `1 + LAMBDA_NGRAM * need(g)` when `g` is in scope and exactly `1.0` when it is not, leaving out-of-scope candidates weighted by frequency and key-need alone.
+
+**A word start has no ngram factor at all.** The first character of a word has no preceding context, so no `g` exists to score. This is worth stating because `need` dispatches on length: passing a bare key through it as a one-rune string silently returns the _key's_ need a second time, double-counting it. The implementation keeps the two paths in separate functions so the mistake is unreachable rather than merely avoided.
 
 > [!INFO] Generated pseudo-words vs. real-word dictionary
 > Use the generator as the primary source because it never starves with a small alphabet and because it unifies generation with the ngram model. A real-word dictionary filtered to unlocked letters is a possible later addition for late-game variety.
@@ -218,11 +223,7 @@ func NextLesson(s CompetencyState, c Corpus, now time.Time, r *rand.Rand) Lesson
 func ApplyResult(s CompetencyState, c Corpus, res Result, now time.Time) CompetencyState
 ```
 
-Both entry points take `c Corpus`. This is easy to miss for `ApplyResult` - folding a
-result into state reads as self-contained, and the scoring half genuinely is - but the
-progression half is not: unlocking asks _which key comes next_ and _how deep does the
-ngram list go_, and only the corpus knows. The parameter is visible rather than hidden
-in a struct field because the engine's functions are package-level and pure.
+Both entry points take `c Corpus`. This is easy to miss for `ApplyResult` - folding a result into state reads as self-contained, and the scoring half genuinely is - but the progression half is not: unlocking asks _which key comes next_ and _how deep does the ngram list go_, and only the corpus knows. The parameter is visible rather than hidden in a struct field because the engine's functions are package-level and pure.
 
 `ApplyResult` order of operations: update each observed item's `Score`, `Samples`, `LastPracticed`; then evaluate the key-unlock condition (unlock at most one key per call); then evaluate the ngram-tier condition; then evaluate the target-WPM raise (at most one step per call). Unlocking after scoring means a lesson's own result can trigger the unlock it earned.
 
@@ -244,24 +245,28 @@ type Corpus interface {
 Keep these in one block so they are easy to find, tune, and explain. The
 `Constant` column is the Go identifier as declared in `internal/engine/engine.go`.
 
-| Constant               | Default | Meaning                                               |
-| ---------------------- | ------- | ----------------------------------------------------- |
-| `wAccuracy`            | 0.7     | weight of accuracy in instant score                   |
-| `wSpeed`               | 0.3     | weight of speed in instant score                      |
-| `alpha`                | 0.3     | EMA smoothing; higher = more reactive                 |
-| `decayTau`             | 7 days  | recency decay time constant                           |
-| `unlockKeyThreshold`   | 0.85    | min decayed score on all keys to unlock next          |
-| `unlockNgramThreshold` | 0.80    | min decayed score on active ngrams to advance         |
-| `minSamples`           | 50      | confidence gate before any unlock                     |
-| `phaseThreshold`       | 0.75    | mean key score to enter ngram-focus phase             |
-| `startingKeys`         | 4       | size of the initial unlocked set                      |
-| `startingTargetWPM`    | 40      | initial target speed; held until the alphabet unlocks |
-| `targetRaiseScore`     | 0.85    | mean key decayed score needed to raise the target     |
-| `targetWPMStep`        | 5       | WPM added per target raise                            |
-| `lambdaKey`            | 3.0     | weak-key boost in generation                          |
-| `lambdaNgram`          | 0.5→3.0 | weak-ngram boost; phase-scaled                        |
-| `lessonWords`          | 10-15   | words per generated lesson                            |
-| `charsPerWord`         | 5       | assumed chars. per avg. word, used to calc. WPM       |
+| Constant                | Default | Meaning                                               |
+| ----------------------- | ------- | ----------------------------------------------------- |
+| `wAccuracy`             | 0.7     | weight of accuracy in instant score                   |
+| `wSpeed`                | 0.3     | weight of speed in instant score                      |
+| `alpha`                 | 0.3     | EMA smoothing; higher = more reactive                 |
+| `decayTau`              | 7 days  | recency decay time constant                           |
+| `unlockKeyThreshold`    | 0.85    | min decayed score on all keys to unlock next          |
+| `unlockNgramThreshold`  | 0.80    | min decayed score on active ngrams to advance         |
+| `minSamples`            | 50      | confidence gate before any unlock                     |
+| `phaseThreshold`        | 0.75    | mean key score to enter ngram-focus phase             |
+| `startingKeys`          | 4       | size of the initial unlocked set                      |
+| `startingTargetWPM`     | 40      | initial target speed; held until the alphabet unlocks |
+| `targetRaiseScore`      | 0.85    | mean key decayed score needed to raise the target     |
+| `targetWPMStep`         | 5       | WPM added per target raise                            |
+| `lambdaKey`             | 3.0     | weak-key boost in generation                          |
+| `lambdaNgramKeyPhase`   | 0.5     | weak-ngram boost while the lesson is key-focused      |
+| `lambdaNgramNgramPhase` | 3.0     | weak-ngram boost once `phaseIsNgrams`                 |
+| `lessonTargets`         | 5       | high-need items a lesson records for telemetry        |
+| `lessonWords`           | 15      | words per generated lesson                            |
+| `charsPerWord`          | 5       | assumed chars. per avg. word, used to calc. WPM       |
+| `minWordLen`            | 2       | shortest generated word                               |
+| `maxWordLen`            | 6       | longest generated word                                |
 
 These are guesses, not gospel. Tune them against simulated users (below).
 
