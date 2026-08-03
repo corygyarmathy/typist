@@ -3,7 +3,7 @@ package engine
 import "time"
 
 var testNow = time.Date(
-	2026, 1, 1,
+	2026, 10, 1,
 	0, 0, 0, 0,
 	time.UTC,
 )
@@ -14,6 +14,7 @@ var _ Corpus = fakeCorpus{}
 type fakeCorpus struct {
 	ngramsByFrequency []string // frequency-ordered ngrams
 	keyOrder          []rune   // frequency-ordered keys
+	transitions       map[string][]Candidate
 }
 
 func (f fakeCorpus) StartingKeys() int {
@@ -29,7 +30,7 @@ func (f fakeCorpus) NgramsByFrequency() []string { // frequency-ranked; defines 
 }
 
 func (f fakeCorpus) Transitions(context string) []Candidate { // for the generator
-	return nil // ignored in this test
+	return f.transitions[context]
 }
 
 func keysFrom(s string) map[rune]ItemScore {

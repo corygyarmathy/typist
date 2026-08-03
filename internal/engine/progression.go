@@ -23,6 +23,17 @@ func activeNgrams(s CompetencyState, c Corpus) []string {
 	return active
 }
 
+func activeNgramSet(s CompetencyState, c Corpus) (active []string, inScope map[string]struct{}) {
+	// Ngram activeness is derived, so compute it once.
+	active = activeNgrams(s, c)
+	inScope = make(map[string]struct{}, len(active))
+	for _, n := range active {
+		inScope[n] = struct{}{}
+	}
+
+	return active, inScope
+}
+
 // keysUnlocked reports whether every rune of the given string is an unlocked
 // key.
 func keysUnlocked(s string, keys map[rune]ItemScore) bool {

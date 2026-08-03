@@ -2,8 +2,11 @@ package engine
 
 import (
 	"maps"
+	"math/rand/v2"
+	"slices"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // The engine is the most heavily-tested package in the codebase
@@ -69,6 +72,39 @@ func engineFixturesFor(now time.Time, keyOrder []rune) (s CompetencyState, c fak
 	c = fakeCorpus{
 		keyOrder:          keyOrder,
 		ngramsByFrequency: []string{"th", "or", "eo", "ur", "he", "ou"},
+		transitions: map[string][]Candidate{
+			"t": {
+				{Char: 'h', Freq: 0.5},
+				{Char: 'e', Freq: 0.3},
+				{Char: 'o', Freq: 0.2},
+			},
+			"h": {
+				{Char: 'e', Freq: 0.6},
+				{Char: 'o', Freq: 0.3},
+				{Char: 'u', Freq: 0.1},
+			},
+			"e": {
+				{Char: 'r', Freq: 0.4},
+				{Char: 'o', Freq: 0.3},
+				{Char: 't', Freq: 0.2},
+				{Char: 'z', Freq: 0.1},
+			},
+			"o": {
+				{Char: 'u', Freq: 0.5},
+				{Char: 'r', Freq: 0.3},
+				{Char: 't', Freq: 0.2},
+			},
+			"r": {
+				{Char: 'e', Freq: 0.5},
+				{Char: 'o', Freq: 0.3},
+				{Char: 't', Freq: 0.1},
+				{Char: 'q', Freq: 0.1},
+			},
+			"u": {
+				{Char: 'z', Freq: 0.6},
+				{Char: 'x', Freq: 0.4},
+			},
+		},
 	}
 
 	res = Result{
@@ -244,4 +280,89 @@ func TestApplyResult_TargetWPMIncreased(t *testing.T) {
 func TestApplyResult_ZeroStateDoesntPanic(t *testing.T) {
 	_, c, _ := engineKeysUnlocked(testNow)
 	ApplyResult(CompetencyState{}, c, Result{}, testNow)
+}
+
+func TestLessonWords_WalkFollowsGraph(t *testing.T) {
+	r := rand.New(rand.NewPCG(0, 12345))
+	s, c, _ := engineFixtures(testNow)
+
+	lesson := NextLesson(s, c, testNow, r)
+
+	for _, word := range lesson.Words {
+		chars := []rune(word)
+
+		for i := range len(chars) - 1 {
+			prev := chars[i]
+			next := chars[i+1]
+			cands := c.Transitions(string(prev))
+			appears := slices.ContainsFunc(cands, func(c Candidate) bool {
+				return c.Char == next
+			})
+			if !appears {
+				t.Fatalf(
+					"lesson words did not follow graph. word '%v', char pos '%v' rune pair '%c,%c', candidates: %v",
+					word, i+1, prev, next, cands)
+			}
+		}
+	}
+}
+
+func TestNextLesson_OnlyUnlockedKeys(t *testing.T) {
+	r := rand.New(rand.NewPCG(0, 12345))
+	s, c, _ := engineFixtures(testNow)
+
+	lesson := NextLesson(s, c, testNow, r)
+
+	for _, word := range lesson.Words {
+		for _, k := range word {
+
+			if _, ok := s.Keys[k]; !ok {
+				t.Fatalf(
+					"lesson generated w/ locked key. Key '%c', Word '%s', Lesson: '%v'",
+					k, word, lesson,
+				)
+			}
+		}
+	}
+}
+
+func TestNextLesson_WithinBounds(t *testing.T) {
+	r := rand.New(rand.NewPCG(0, 12345))
+	s, c, _ := engineFixtures(testNow)
+
+	lesson := NextLesson(s, c, testNow, r)
+
+	if len(lesson.Words) != lessonWords {
+		t.Fatalf(
+			"Lesson generated w/ incorrect number of words. Expected %v, got %v",
+			lessonWords, len(lesson.Words),
+		)
+	}
+
+	for _, word := range lesson.Words {
+		charLen := utf8.RuneCountInString(word)
+		if charLen < 1 || charLen > maxWordLen {
+			t.Fatalf(
+				"Lesson generated word w/ incorrect length. Expected min %v, max %v, got %v",
+				minWordLen, maxWordLen, charLen,
+			)
+		}
+	}
+}
+
+func TestNextLesson_Determinism(t *testing.T) {
+	r1 := rand.New(rand.NewPCG(0, 12345))
+	r2 := rand.New(rand.NewPCG(0, 12345))
+	s, c, _ := engineFixtures(testNow)
+
+	l1 := NextLesson(s, c, testNow, r1)
+	l2 := NextLesson(s, c, testNow, r2)
+
+	if !slices.Equal(l1.Words, l2.Words) {
+		t.Fatalf(
+			"lessons generated w/ same random seed should match - didn't.\nLesson 1: %v\nLesson 2: %v",
+			l1, l2,
+		)
+	}
+
 }

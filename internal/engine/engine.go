@@ -33,6 +33,7 @@ package engine
 
 import (
 	"maps"
+	"math/rand/v2"
 	"time"
 )
 
@@ -44,32 +45,52 @@ import (
 // simplicity. May revisit if advantageous to testing the engine, once at that
 // stage of implementation.
 //
-//nolint:unused // consumed by scoring/progression/generation in phase-3 steps 2-5.
+//nolint:unused // TODO: remove. waiting on phase-3 to be completed.
 const (
-	wAccuracy            = 0.7                // weight of accuracy in instant score
-	wSpeed               = 0.3                // weight of speed in instant score
-	alpha                = 0.3                // EMA smoothing; higher = more reactive
-	decayTau             = 7 * 24 * time.Hour // recency decay time constant: the e-folding time in exp(-age/tau)
-	unlockKeyThreshold   = 0.85               // min decayed score on all keys to unlock next
-	unlockNgramThreshold = 0.80               // min decayed score on active ngrams to advance
-	minSamples           = 50                 // confidence gate before any unlock
-	phaseThreshold       = 0.75               // mean key score to enter ngram-focus phase
-	startingKeys         = 4                  // size of the initial unlocked set
-	startingTargetWPM    = 40                 // initial target speed; held until the alphabet unlocks
-	targetRaiseScore     = 0.85               // mean key decayed score needed to raise the target
-	targetWPMStep        = 5                  // WPM added per target raise
-	lambdaKey            = 3.0                // weak-key boost in generation
-	lambdaNgram          = 0.5                // weak-ngram boost; phase-scaled
-	lessonWords          = 15                 // words per generated lesson
-	charsPerWord         = 5                  // assumed chars per average word, used to calc. WPM
+	wAccuracy             = 0.7                // weight of accuracy in instant score
+	wSpeed                = 0.3                // weight of speed in instant score
+	alpha                 = 0.3                // EMA smoothing; higher = more reactive
+	decayTau              = 7 * 24 * time.Hour // recency decay time constant: the e-folding time in exp(-age/tau)
+	unlockKeyThreshold    = 0.85               // min decayed score on all keys to unlock next
+	unlockNgramThreshold  = 0.80               // min decayed score on active ngrams to advance
+	minSamples            = 50                 // confidence gate before any unlock
+	phaseThreshold        = 0.75               // mean key score to enter ngram-focus phase
+	startingKeys          = 4                  // size of the initial unlocked set
+	startingTargetWPM     = 40                 // initial target speed; held until the alphabet unlocks
+	targetRaiseScore      = 0.85               // mean key decayed score needed to raise the target
+	targetWPMStep         = 5                  // WPM added per target raise
+	lambdaKey             = 3.0                // weak-key boost in generation
+	lambdaNgramKeyPhase   = 0.5                // weak-ngram boost while the lesson is key-focused
+	lambdaNgramNgramPhase = 3.0                // ngram boost once phaseIsNgrams
+	lessonTargets         = 5                  // high-need items a lesson records for telemetry
+	lessonWords           = 15                 // words per generated lesson
+	charsPerWord          = 5                  // assumed chars per average word, used to calc. WPM
+	minWordLen            = 2                  // min chars per word, used to generate words for lessons
+	maxWordLen            = 6                  // max chars per word, used to generate words for lessons
 )
 
 // The engine's two entry points are package-level pure functions (not methods
 // on a struct): all randomness and the current time are injected so tests are
 // deterministic. See docs/engine.md for the full spec.
-//
-// TODO(phase-3):
-//   - NextLesson(s CompetencyState, c Corpus, now time.Time, r *rand.Rand) Lesson
+
+func NextLesson(s CompetencyState, c Corpus, now time.Time, r *rand.Rand) Lesson {
+	sc := newLessonScope(s, c, now)
+	seeds := sc.seeds()
+	if len(seeds) == 0 {
+		return Lesson{}
+	}
+
+	var lesson Lesson
+
+	for range lessonWords {
+		word := sc.word(seeds, r)
+		lesson.Words = append(lesson.Words, word)
+	}
+
+	lesson.Targets = sc.targets()
+
+	return lesson
+}
 
 func ApplyResult(s CompetencyState, c Corpus, res Result, now time.Time) CompetencyState {
 	// NOTE: the progression predicates read next, not s. Otherwise the results
@@ -101,12 +122,7 @@ func ApplyResult(s CompetencyState, c Corpus, res Result, now time.Time) Compete
 		next.Keys[k] = updated
 	}
 
-	// Ngram activeness is derived, so compute it once.
-	active := activeNgrams(next, c)
-	inScope := make(map[string]struct{}, len(active))
-	for _, n := range active {
-		inScope[n] = struct{}{}
-	}
+	_, inScope := activeNgramSet(next, c)
 
 	for ngram, o := range res.Ngrams {
 		if _, ok := inScope[ngram]; !ok {
