@@ -166,3 +166,12 @@ func TestScoring_ImpossibleInputsNotOk(t *testing.T) {
 		})
 	}
 }
+
+// tests freshly unlocked key or ngram w/ no ItemScore results
+func TestScoring_FreshlyUnlocked(t *testing.T) {
+	now := time.Now()
+	score := decayedScore(ItemScore{}, now)
+	if score != 0 {
+		t.Errorf("decayedScore for nil ItemScore not 0, got %v", score)
+	}
+}
