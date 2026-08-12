@@ -6,6 +6,35 @@ import (
 	"time"
 )
 
+// InitialCompetency seeds a new user's state: the startingKeys most-frequent
+// keys unlocked at zero score, a non-zero NgramTier, and TargetWPM at
+// startingTargetWPM.
+//
+// It takes the corpus because the starting set must be a prefix of KeyOrder():
+// nextKeyToUnlock walks that order looking for the first key absent from
+// s.Keys, so a hand-written starting literal that disagrees with the corpus
+// would silently stop "unlock the next most frequent key" from being true.
+//
+// NgramTier starts at startingNgramTier rather than 0 because activeNgrams over
+// an empty tier is empty, shouldAdvanceNgramTier returns false on the empty
+// set, and the ngram axis would never start.
+func InitialCompetency(c Corpus) CompetencyState {
+	order := c.KeyOrder()
+	n := min(startingKeys, len(order))
+
+	keys := make(map[rune]ItemScore, n)
+	for _, r := range order[:n] {
+		keys[r] = ItemScore{}
+	}
+
+	return CompetencyState{
+		Keys:      keys,
+		Ngrams:    make(map[string]ItemScore),
+		NgramTier: startingNgramTier,
+		TargetWPM: startingTargetWPM,
+	}
+}
+
 // activeNgrams returns all ngrams that are within the tier and have their
 // constituent keys unlocked.
 func activeNgrams(s CompetencyState, c Corpus) []string {
