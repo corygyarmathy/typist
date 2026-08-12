@@ -1,6 +1,10 @@
 package engine
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 // This file holds the engine's vocabulary: the domain types and the one
 // interface it consumes. Behaviour lives in engine.go, scoring.go,
@@ -22,10 +26,14 @@ import "time"
 // trustworthy.
 // - LastPracticed enables decaying an item's effective score at read time so
 // neglected items resurface.
+//
+// The json tags are load-bearing: ItemScore is the value type of both maps in
+// the persisted competency document (docs/schema.md), so renaming a field here
+// is a data migration, not a refactor.
 type ItemScore struct {
-	Score         float64   // smoothed competency [0,1]
-	Samples       int       // keystrokes observed; confidence
-	LastPracticed time.Time // for recency decay
+	Score         float64   `json:"score"`          // smoothed competency [0,1]
+	Samples       int       `json:"samples"`        // keystrokes observed; confidence
+	LastPracticed time.Time `json:"last_practiced"` // for recency decay
 }
 
 // CompetencyState is a snapshot of a single user's typing competency at a
@@ -48,12 +56,81 @@ type ItemScore struct {
 // with it if it is never stored.
 //
 // This is the JSONB document persisted per user (see docs/schema.md); it maps
-// 1:1 to the engine's working type.
+// 1:1 to the engine's working type. That 1:1-ness is a deliberate,
+// ADR-0009-blessed coupling and it has a price: the json tags on this type and
+// on ItemScore are the persisted schema, so renaming a field is a migration
+// concern rather than a local rename.
 type CompetencyState struct {
-	Keys      map[rune]ItemScore   `json:"keys"`
+	Keys      KeyScores            `json:"keys"`
 	Ngrams    map[string]ItemScore `json:"ngrams"`
 	NgramTier int                  `json:"ngram_tier"` // how many of the frequency-ranked ngrams are in scope
 	TargetWPM int                  `json:"target_wpm"` // tool-managed speed threshold; see ADR 0012
+}
+
+// KeyScores is CompetencyState.Keys: the unlock set, keyed by the key itself.
+//
+// It is a named type solely so it can carry its own wire format. A rune is an
+// int32, and encoding/json writes integer map keys as their quoted decimal, so
+// the untyped map[rune]ItemScore persists key 'e' as "101" - legal JSON, and
+// nothing like the document docs/schema.md specifies. The two methods below
+// translate at the boundary and leave rune as the engine's vocabulary
+// everywhere else; because a named map type is assignable to and from the
+// unnamed one, no existing call site, literal or maps.Clone changed.
+//
+// The alternative extension point is a `type Key rune` with a MarshalText
+// method, which json honours for map keys. Rejected here only because it wants
+// to propagate through Corpus.KeyOrder, Candidate.Char and Result.Keys to avoid
+// a rune/Key split, which is a package-wide vocabulary change made for a
+// serialisation reason.
+type KeyScores map[rune]ItemScore
+
+// MarshalJSON writes the map keyed by the character itself ("e"), not by its
+// code point.
+//
+// The receiver is a value, not a pointer, deliberately: with a pointer receiver
+// the method would be absent from KeyScores' method set, and marshalling a
+// CompetencyState value - which is how every caller holds one - would silently
+// fall back to the integer-key encoding. The failure would be invisible until
+// something read the persisted document. (Flipping the receiver here happens to
+// stop compiling on the len below; that is luck, not protection - the same
+// mistake in a body that compiles is silent.)
+func (ks KeyScores) MarshalJSON() ([]byte, error) {
+	// Always allocate, so a nil map marshals as {} rather than null: the
+	// document in docs/schema.md always has a "keys" object, and a fresh state
+	// that never round-trips cleanly is a bad thing to persist.
+	m := make(map[string]ItemScore, len(ks))
+	for r, score := range ks {
+		m[string(r)] = score // rune -> its UTF-8 encoding, not its digits
+	}
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON is the inverse, and rejects any key that is not exactly one
+// character. Without that check "th" would decode as 't' and silently join the
+// unlock set as a key the user never earned.
+func (ks *KeyScores) UnmarshalJSON(b []byte) error {
+	// By convention an Unmarshaler treats null as a no-op, so that decoding a
+	// document with no "keys" leaves the field as the caller had it.
+	if string(b) == "null" {
+		return nil
+	}
+
+	var m map[string]ItemScore
+	if err := json.Unmarshal(b, &m); err != nil {
+		return fmt.Errorf("decoding competency keys: %w", err)
+	}
+
+	out := make(KeyScores, len(m))
+	for s, score := range m {
+		r := []rune(s)
+		if len(r) != 1 {
+			return fmt.Errorf("competency key %q is not a single character", s)
+		}
+		out[r[0]] = score
+	}
+	*ks = out
+
+	return nil
 }
 
 // The client aggregates per-item stats during a lesson and submits a summary.
