@@ -45,7 +45,11 @@ import (
 // simplicity. May revisit if advantageous to testing the engine, once at that
 // stage of implementation.
 //
-//nolint:unused // TODO: remove. waiting on phase-3 to be completed.
+// minSamples originally set to 50, lowered to 15 as a result of corpus harness
+// testing. When it was 50, a good typist needed ~600 lessons to unlock all
+// keys. 15 ensures that a few lucky key observations will not skew the results
+// but is low enough that if they're proficient, it'll quickly unlock the next
+// key.
 const (
 	wAccuracy             = 0.7                // weight of accuracy in instant score
 	wSpeed                = 0.3                // weight of speed in instant score
@@ -53,9 +57,10 @@ const (
 	decayTau              = 7 * 24 * time.Hour // recency decay time constant: the e-folding time in exp(-age/tau)
 	unlockKeyThreshold    = 0.85               // min decayed score on all keys to unlock next
 	unlockNgramThreshold  = 0.80               // min decayed score on active ngrams to advance
-	minSamples            = 50                 // confidence gate before any unlock
+	minSamples            = 15                 // confidence gate before any unlock
 	phaseThreshold        = 0.75               // mean key score to enter ngram-focus phase
 	startingKeys          = 4                  // size of the initial unlocked set
+	startingNgramTier     = 20                 // ensures non-empty seed, preventing stuck state. ~20 has 2-4 starting ngrams.
 	startingTargetWPM     = 40                 // initial target speed; held until the alphabet unlocks
 	targetRaiseScore      = 0.85               // mean key decayed score needed to raise the target
 	targetWPMStep         = 5                  // WPM added per target raise
