@@ -50,10 +50,10 @@ type ItemScore struct {
 // This is the JSONB document persisted per user (see docs/schema.md); it maps
 // 1:1 to the engine's working type.
 type CompetencyState struct {
-	Keys      map[rune]ItemScore
-	Ngrams    map[string]ItemScore
-	NgramTier int // how many of the frequency-ranked ngrams are in scope
-	TargetWPM int // tool-managed speed threshold; see ADR 0012
+	Keys      map[rune]ItemScore   `json:"keys"`
+	Ngrams    map[string]ItemScore `json:"ngrams"`
+	NgramTier int                  `json:"ngram_tier"` // how many of the frequency-ranked ngrams are in scope
+	TargetWPM int                  `json:"target_wpm"` // tool-managed speed threshold; see ADR 0012
 }
 
 // The client aggregates per-item stats during a lesson and submits a summary.
