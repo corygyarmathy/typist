@@ -29,7 +29,6 @@ package corpus
 //	var corpusData []byte
 //
 // and implement the methods the engine requires:
-//   - StartingKeys() int
 //   - KeyOrder() []rune                 // frequency order, for unlocking
 //   - NgramsByFrequency() []string      // frequency-ranked, defines tiers
 //   - Transitions(context string) []engine.Candidate

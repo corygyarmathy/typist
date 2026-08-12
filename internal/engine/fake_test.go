@@ -17,20 +17,16 @@ type fakeCorpus struct {
 	transitions       map[string][]Candidate
 }
 
-func (f fakeCorpus) StartingKeys() int {
-	return 0 // ignored in this test
+func (h fakeCorpus) KeyOrder() []rune { // frequency order for unlocking
+	return h.keyOrder
 }
 
-func (f fakeCorpus) KeyOrder() []rune { // frequency order for unlocking
-	return f.keyOrder
+func (h fakeCorpus) NgramsByFrequency() []string { // frequency-ranked; defines tiers
+	return h.ngramsByFrequency
 }
 
-func (f fakeCorpus) NgramsByFrequency() []string { // frequency-ranked; defines tiers
-	return f.ngramsByFrequency
-}
-
-func (f fakeCorpus) Transitions(context string) []Candidate { // for the generator
-	return f.transitions[context]
+func (h fakeCorpus) Transitions(context string) []Candidate { // for the generator
+	return h.transitions[context]
 }
 
 func keysFrom(s string) map[rune]ItemScore {
