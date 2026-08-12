@@ -136,7 +136,7 @@ Two axes. Keys are the breadth of the alphabet; ngram tier is the depth of combi
 
 ### Key unlocking
 
-- Start from `corpus.StartingKeys()` - the N most frequent letters (keybr uses `e n i t r l`); `N` is a constant, default 4.
+- Start from engine `startingKeys` int const and use `KeyOrder()` to get what's currently available - the N most frequent letters (keybr uses `e n i t r l`); `N` is a constant, default 4.
 - New keys are introduced one at a time, in `corpus.KeyOrder()` (frequency order), when **every** currently-unlocked key clears the bar:
 
 ```
@@ -233,7 +233,6 @@ The engine takes `Corpus` as a parameter so the dependency points downward (`int
 
 ```go
 type Corpus interface {
-    StartingKeys() int
     KeyOrder() []rune                  // frequency order for unlocking
     NgramsByFrequency() []string       // frequency-ranked; defines tiers
     Transitions(context string) []Candidate  // for the generator
