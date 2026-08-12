@@ -219,9 +219,12 @@ func TestCandidates_WeakButRarerBeatsStrongButCommon(t *testing.T) {
 	got := weightOf(t, cands, 'o') / weightOf(t, cands, 'e')
 
 	// Both ngrams ("to", "te") are out of tier, so both ngram factors are 1.0
-	// and only the key factor separates the two candidates. Derived from the
-	// constant rather than hard-coded so a lambdaKey retune doesn't break it.
-	want := (0.2 * (1 + lambdaKey*0.9)) / (0.3 * (1 + lambdaKey*0.1))
+	// and only the key factor separates the two candidates. Base frequency is
+	// flattened by freqExponent exactly as candidates() does. Derived from the
+	// constants rather than hard-coded so a lambdaKey or freqExponent retune
+	// doesn't break it.
+	want := (math.Pow(0.2, freqExponent) * (1 + lambdaKey*0.9)) /
+		(math.Pow(0.3, freqExponent) * (1 + lambdaKey*0.1))
 
 	if got <= 1 {
 		t.Errorf("weak-but-rarer 'o' should outweigh strong-but-common 'e'; ratio %v", got)
@@ -245,10 +248,12 @@ func TestCandidates_NgramFactorGatedOnScope(t *testing.T) {
 	// exactly 1.0. 'o' forms "to", which is not in the corpus ngram list at all
 	// -> gated out, so its factor is 1.0 too. With the key factors equal, only
 	// the base frequencies are left.
-	want := 0.5 / 0.2 // Freq('h') / Freq('o') after "t"
+	// Freq('h') / Freq('o') after "t", flattened by freqExponent as
+	// candidates() does.
+	want := math.Pow(0.5, freqExponent) / math.Pow(0.2, freqExponent)
 
 	// Ungated, "to" would score need 1.0 and take a 1 + lambdaNgramKeyPhase
-	// factor of 1.5, dragging this ratio down to ~1.667.
+	// factor of 1.5, dragging this ratio down to ~1.054.
 	if math.Abs(got-want) > 1e-9 {
 		t.Errorf("ngram factor not gated on scope: want ratio %v, got %v", want, got)
 	}

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"cmp"
+	"math"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -87,7 +88,7 @@ func (sc lessonScope) candidates(context string) []weightedCandidate {
 			} else {
 				ngramFactor = 1.0
 			}
-			weight := c.Freq * keyFactor * ngramFactor
+			weight := math.Pow(c.Freq, freqExponent) * keyFactor * ngramFactor
 
 			// append unlocked, weighted candidate
 			w := weightedCandidate{char: c.Char, weight: weight}
