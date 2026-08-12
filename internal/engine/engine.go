@@ -72,6 +72,7 @@ const (
 	charsPerWord          = 5                  // assumed chars per average word, used to calc. WPM
 	minWordLen            = 2                  // min chars per word, used to generate words for lessons
 	maxWordLen            = 6                  // max chars per word, used to generate words for lessons
+	freqExponent          = 0.5                // flattens the corpus frequency distribution so the key-need factor can compete; see harness findings
 )
 
 // The engine's two entry points are package-level pure functions (not methods
