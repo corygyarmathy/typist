@@ -74,8 +74,8 @@ A typical authenticated request (`GET /api/v1/lessons/next`) flows through:
 
 1. begin a transaction
 2. load the user's `CompetencyState` via the `progress` repository, selecting the `user_progress` row `FOR UPDATE` (transaction-scoped). The state is a whole-document load-modify-write, so two overlapping submissions for the same user could otherwise lose an update; the row lock serialises them. Contention is per-user (one person typing), so the lock is effectively never contended.
-3. `engine.ApplyResult(state, result, now)` - pure; folds the observations in and applies any unlock or tier advance
-4. derive the session's WPM and accuracy from the submitted duration and observations - pure; the server does not trust client-computed aggregates
+3. `engine.ApplyResult(state, corpus, result, now)` - pure; folds the observations in and applies any unlock or tier advance. The corpus is needed because unlocking asks which key comes next, which only the corpus knows (see [`engine.md`](engine.md#the-two-engine-functions))
+4. derive the session's WPM and accuracy from the submitted observations alone - pure; the server does not trust client-computed aggregates, and takes no client-reported duration either, so the summary and the scores come from one input. Summed over keys only: a bigram's time covers two keystrokes, so summing ngrams double-counts
 5. insert the `sessions` row via the `session` repository (same transaction)
 6. write the updated competency via the `progress` repository (same transaction)
 7. commit
