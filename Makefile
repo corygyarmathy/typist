@@ -1,7 +1,7 @@
 # Common developer tasks. All commands assume you're in a `nix develop` shell
 # or have the equivalent tools on $PATH.
 
-.PHONY: help run watch test lint fmt build sqlc migrate-up migrate-down migrate-new openapi db-up db-down db-reset docker-up docker-down
+.PHONY: help run watch test lint fmt build sqlc migrate-up migrate-down migrate-new openapi db-up db-down db-reset docker-up docker-down corpus
 
 # Local Nix-native Postgres. Data lives in a gitignored dir under the repo, so
 # `make db-reset` is a safe throwaway and nothing touches system Postgres.
@@ -68,3 +68,6 @@ docker-up: ## Start the full dev stack in Docker (app + postgres) — for review
 
 docker-down: ## Stop and remove the dev stack
 	docker compose -f deploy/docker/compose.yaml down
+
+corpus: ## Regenerate the embedded corpus from the committed sources
+	go run ./cmd/corpusgen
