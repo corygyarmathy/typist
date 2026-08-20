@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/corygyarmathy/typist/internal/auth"
+	"github.com/corygyarmathy/typist/internal/corpus"
 	"github.com/corygyarmathy/typist/internal/platform/config"
 	"github.com/corygyarmathy/typist/internal/platform/database"
 	"github.com/corygyarmathy/typist/internal/platform/logging"
@@ -35,7 +37,6 @@ func main() {
 }
 
 func run() error {
-	// TODO(phase-3): construct the engine
 	// TODO(phase-6): expose /metrics
 
 	ctx, stop := signal.NotifyContext(
@@ -51,6 +52,12 @@ func run() error {
 	}
 
 	logging.Setup(cfg.LogLevel, cfg.Env)
+
+	// intit before db: it's cheap and fails fast
+	corpusProvider, err := corpus.New()
+	if err != nil {
+		return fmt.Errorf("loading corpus: %w", err)
+	}
 
 	dbPool, err := database.Open(
 		context.Background(),
@@ -73,7 +80,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	authSvc := auth.NewService(dbPool, newProgressInitialiser, authn, hasher)
+	authSvc := auth.NewService(dbPool, newProgressInitialiser(corpusProvider), authn, hasher)
 	authHandler := auth.NewHandler(authSvc)
 
 	progressSvc := progress.NewService(dbPool)

@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/corygyarmathy/typist/internal/auth"
+	"github.com/corygyarmathy/typist/internal/corpus"
 	"github.com/corygyarmathy/typist/internal/openapi"
 	"github.com/corygyarmathy/typist/internal/platform/database"
 	"github.com/corygyarmathy/typist/internal/progress"
@@ -77,8 +80,14 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to build hasher: %v", err)
 	}
-	authSvc := auth.NewService(pool, newProgressInitialiser, authn, hasher)
+	corpusProvider, err := corpus.New()
+	if err != nil {
+		t.Fatalf("failed to load corpus: %v", err)
+	}
+
+	authSvc := auth.NewService(pool, newProgressInitialiser(corpusProvider), authn, hasher)
 	progressSvc := progress.NewService(pool)
+
 	api := &API{
 		ready:    pool.Ping,
 		auth:     auth.NewHandler(authSvc),
@@ -135,12 +144,35 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 		t.Fatalf("progress: status = %d, want %v (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var progressRes map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&progressRes); err != nil {
+	var got struct {
+		Keys map[string]struct {
+			Score   float64 `json:"score"`
+			Samples int     `json:"samples"`
+		} `json:"keys"`
+		Ngrams    map[string]any `json:"ngrams"`
+		NgramTier int            `json:"ngram_tier"`
+		TargetWPM int            `json:"target_wpm"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("progress: decode response: %v", err)
 	}
-	if len(progressRes) == 0 {
-		t.Fatal("progress: got empty progress response")
+
+	if got.NgramTier != 20 {
+		t.Errorf("ngram_tier = %d, want 20", got.NgramTier)
+	}
+	if got.TargetWPM != 40 {
+		t.Errorf("target_wpm = %d, want 40", got.TargetWPM)
+	}
+	if len(got.Keys) != 4 {
+		t.Errorf("len(keys) = %d, want 4", len(got.Keys))
+	}
+	for _, k := range []string{"e", "t", "a", "o"} {
+		if _, ok := got.Keys[k]; !ok {
+			t.Errorf("keys is missing %q; got %v", k, slices.Sorted(maps.Keys(got.Keys)))
+		}
+	}
+	if len(got.Ngrams) != 0 {
+		t.Errorf("len(ngrams) = %d, want 0", len(got.Ngrams))
 	}
 
 	// 4. GET /api/v1/progress with a garbage token -> 401 problem+json

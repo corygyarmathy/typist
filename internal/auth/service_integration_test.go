@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/corygyarmathy/typist/internal/auth"
+	"github.com/corygyarmathy/typist/internal/corpus"
+	"github.com/corygyarmathy/typist/internal/engine"
 	"github.com/corygyarmathy/typist/internal/platform/database"
 	"github.com/corygyarmathy/typist/internal/progress"
 	"github.com/google/uuid"
@@ -70,7 +72,7 @@ func newTestService(t *testing.T) (svc *auth.Service, authn *auth.Authenticator,
 	t.Helper()
 	pool = newTestPool(t)
 	authn = auth.NewAuthenticator([]byte("test-secret"), time.Hour)
-	svc = auth.NewService(pool, realProgress, authn, newTestHasher(t))
+	svc = auth.NewService(pool, realProgress(newTestCorpus(t)), authn, newTestHasher(t))
 	return svc, authn, pool
 }
 
@@ -84,9 +86,23 @@ func newTestHasher(t *testing.T) *auth.Hasher {
 	return h
 }
 
+// newTestCorpus loads the real embedded corpus. This is an integration test
+// mirroring production wiring, and corpus.New() reads go:embed'd data with no
+// external dependency, so there is nothing to gain from a fake here.
+func newTestCorpus(t *testing.T) *corpus.Provider {
+	t.Helper()
+	c, err := corpus.New()
+	if err != nil {
+		t.Fatalf("loading corpus: %v", err)
+	}
+	return c
+}
+
 // realProgress mirrors cmd/server's newProgressInitialiser - the production factory.
-func realProgress(tx pgx.Tx) auth.ProgressInitialiser {
-	return progress.NewInitialiser(tx)
+func realProgress(c engine.Corpus) func(pgx.Tx) auth.ProgressInitialiser {
+	return func(tx pgx.Tx) auth.ProgressInitialiser {
+		return progress.NewInitialiser(tx, c)
+	}
 }
 
 type failingProgress struct{}
