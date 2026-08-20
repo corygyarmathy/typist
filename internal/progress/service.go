@@ -2,8 +2,10 @@ package progress
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"github.com/corygyarmathy/typist/internal/engine"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,17 +16,19 @@ import (
 // orchestrated here, not in handlers or repositories.
 
 type Initialiser struct {
-	repo Repository
+	repo   Repository
+	corpus engine.Corpus
 }
 
-func NewInitialiser(tx pgx.Tx) *Initialiser {
-	return &Initialiser{repo: newPgxRepository(tx)} // tx satisfies DBTX -> repo runs on this tx
+func NewInitialiser(tx pgx.Tx, c engine.Corpus) *Initialiser {
+	return &Initialiser{repo: newPgxRepository(tx), corpus: c}
 }
 
 func (s *Initialiser) CreateInitial(ctx context.Context, userID uuid.UUID) error {
-	// TODO(phase-3): replace with engine.InitialCompetency()
-	initialCompetency := []byte(`{"version":0}`)
-
+	initialCompetency, err := json.Marshal(engine.InitialCompetency(s.corpus))
+	if err != nil {
+		return fmt.Errorf("marshalling initial competency: %w", err)
+	}
 	return s.repo.CreateUserProgress(ctx, userID, initialCompetency)
 }
 
