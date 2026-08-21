@@ -188,6 +188,19 @@ Put the `minimum` / `maxLength` bounds in the spec even though nothing enforces 
 
 Add the three methods to `cmd/server/api.go` returning `errNotImplemented`, delegating to handlers that do not exist yet (comment them out, or point them at the existing handler types with a TODO). **Checkpoint:** `curl` each new route with a valid bearer token → `501 problem+json`; without a token → `401`. That second one is the proof that default-deny worked and `publicRoutes` needed no edit.
 
+**Found while doing it: two 400s never reach `*API`, so the sentinel switch in `router.go` cannot map them.** oapi-codegen owns them, and both defaulted to `http.Error` - `text/plain` carrying the raw error - against a spec where every `400` is declared `application/problem+json`. Both options are now set in `Router`:
+
+| Failure | Generated hook | Runs |
+| --- | --- | --- |
+| Body is not valid JSON for the operation | `RequestErrorHandlerFunc` | inside the strict handler, **after** `RequireAuth` |
+| Query param will not bind (`?limit=abc`) | `ErrorHandlerFunc` | inside the route wrapper, **before** `RequireAuth` |
+
+The ordering in row two is the real defect: an anonymous caller got a `400` naming a parameter of a route they were not authenticated for, where every other request to it answers `401`. It is not fixable by reordering (the generated wrapper binds parameters before applying `Middlewares`, and hoisting `RequireAuth` out of that chain would strand it above the mux, where `r.Pattern` is empty and every route including `/healthz` reads as protected). So `ErrorHandlerFunc` re-asks the gate itself, via a new `auth.Authenticate` extracted from `RequireAuth` - one decision, two callers, rather than a security check written twice.
+
+Neither handler echoes the underlying error any more; both log it with the request ID and return a generic detail, naming only the parameter (which is published in the spec anyway). Three cases in `TestRouter` pin all of it, including that the unauthenticated bad-`limit` request is a `401`.
+
+Note for step 6: `limit` and `cursor` are therefore already guaranteed well-typed by the time the handler sees them - `*int` and `*string`, nil when absent. What is left to validate there is range (`1..100`) and the default of `20`, neither of which the generated code applies.
+
 ### Step 3 - `GET /lessons/next` (the easy end of the vertical)
 
 No migration, no new SQL, no transaction. It closes the engine↔HTTP seam and gives you a working endpoint fast.
