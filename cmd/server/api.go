@@ -88,3 +88,42 @@ func (a *API) GetProgress(
 ) (openapi.GetProgressResponseObject, error) {
 	return a.progress.GetProgress(ctx, req)
 }
+
+// TODO: flesh out below stubs
+
+// GetNextLesson returns the next generated lesson for the authenticated user.
+//
+// It is served by the progress context, not session: the only state it reads
+// is user_progress.competency, which progress owns. Lessons are generated and
+// never stored, so there is no lesson context to own the noun - the endpoint
+// is a projection of progress state through engine.NextLesson.
+//
+// TODO(phase-4, step 3): return a.progress.GetNextLesson(ctx, req).
+func (a *API) GetNextLesson(
+	ctx context.Context,
+	req openapi.GetNextLessonRequestObject,
+) (openapi.GetNextLessonResponseObject, error) {
+	return nil, errNotImplemented
+}
+
+// SubmitSession records a completed lesson: the transactional write that folds
+// the submitted observations into competency and inserts the session row.
+//
+// TODO(phase-4, step 5): return a.session.SubmitSession(ctx, req), once API
+// carries a *session.Handler.
+func (a *API) SubmitSession(
+	ctx context.Context,
+	req openapi.SubmitSessionRequestObject,
+) (openapi.SubmitSessionResponseObject, error) {
+	return nil, errNotImplemented
+}
+
+// ListSessions returns a keyset-paginated page of the user's session history.
+//
+// TODO(phase-4, step 6): return a.session.ListSessions(ctx, req).
+func (a *API) ListSessions(
+	ctx context.Context,
+	req openapi.ListSessionsRequestObject,
+) (openapi.ListSessionsResponseObject, error) {
+	return nil, errNotImplemented
+}
