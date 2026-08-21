@@ -128,8 +128,7 @@ func TestRouter(t *testing.T) {
 			// The body must at least parse as SessionSubmission: the generated
 			// strict handler decodes it before calling *API, so a malformed
 			// body never reaches the stub. It short-circuits through
-			// RequestErrorHandlerFunc, which router.go leaves at the
-			// generated default - a text/plain 400, not problem+json.
+			// RequestErrorHandlerFunc instead - see the case below.
 			name:       "submit session stub",
 			method:     "POST",
 			target:     "/api/v1/sessions",
@@ -137,6 +136,42 @@ func TestRouter(t *testing.T) {
 			body:       `{"keys":{},"ngrams":{}}`,
 			ready:      readyOK,
 			wantStatus: 501,
+			wantCType:  "application/problem+json",
+		},
+
+		// The two error paths the generated code owns rather than *API. Both
+		// default upstream to http.Error (text/plain, raw error text);
+		// router.go overrides them, and these cases pin the override.
+		{
+			// Body decode fails inside the strict handler, which runs AFTER
+			// RequireAuth - so this needs a token to reach the failure at all.
+			name:       "submit session with a malformed body",
+			method:     "POST",
+			target:     "/api/v1/sessions",
+			token:      true,
+			body:       `{"keys":`,
+			ready:      readyOK,
+			wantStatus: 400,
+			wantCType:  "application/problem+json",
+		},
+		{
+			name:       "list sessions with an unparseable limit",
+			method:     "GET",
+			target:     "/api/v1/sessions?limit=abc",
+			token:      true,
+			ready:      readyOK,
+			wantStatus: 400,
+			wantCType:  "application/problem+json",
+		},
+		{
+			// Parameter binding runs BEFORE the middleware chain, so without
+			// the re-check in ErrorHandlerFunc this answers 400 and names the
+			// limit parameter to an anonymous caller. 401 must win.
+			name:       "unparseable limit without a token is still a 401",
+			method:     "GET",
+			target:     "/api/v1/sessions?limit=abc",
+			ready:      readyOK,
+			wantStatus: 401,
 			wantCType:  "application/problem+json",
 		},
 	}

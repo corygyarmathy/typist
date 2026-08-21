@@ -57,6 +57,25 @@ func Router(api *API, v auth.Validator) http.Handler {
 		api,
 		nil,
 		openapi.StrictHTTPServerOptions{
+			// Body-decode failures. The generated strict handler unmarshals the
+			// request body into the operation's type before calling *API, so a
+			// body that is not valid JSON for the endpoint never reaches a
+			// handler and cannot be mapped by the sentinel switch below.
+			//
+			// Left unset, oapi-codegen defaults this to http.Error, which
+			// answers text/plain with the raw json decoder message - both a
+			// contract violation (every 400 in api/openapi.yaml is declared
+			// application/problem+json) and a needless disclosure of internals.
+			RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+				slog.Warn("rejected malformed request body",
+					"err", err,
+					"request_id", httpx.RequestIDFromContext(r.Context()),
+					"method", r.Method,
+					"path", r.URL.Path,
+				)
+				httpx.WriteProblem(w, r, http.StatusBadRequest,
+					"request body is not valid JSON for this endpoint")
+			},
 			ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 				switch {
 				case errors.Is(err, errNotImplemented):
@@ -99,6 +118,51 @@ func Router(api *API, v auth.Validator) http.Handler {
 		openapi.StdHTTPServerOptions{
 			BaseRouter:  mux,
 			Middlewares: []openapi.MiddlewareFunc{auth.RequireAuth(v, publicRoutes)},
+
+			// Query-parameter binding failures, e.g. ?limit=abc.
+			//
+			// Note the ordering, which is the generated code's and not ours to
+			// change: the per-route wrapper binds parameters and calls this
+			// first, and only then applies Middlewares. So RequireAuth has not
+			// run yet, and without the re-check below an anonymous caller
+			// would get a 400 - naming a parameter of a route they are not
+			// authenticated for - where every other request to that route
+			// answers 401. Re-asking auth.Authenticate here restores the
+			// invariant that a protected route says 401 before it says
+			// anything else.
+			//
+			// The default for this option is likewise http.Error/text/plain,
+			// and it leaks the strconv error verbatim.
+			ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+				if !publicRoutes[r.Pattern] {
+					if _, detail, ok := auth.Authenticate(v, r); !ok {
+						httpx.WriteProblem(w, r, http.StatusUnauthorized, detail)
+						return
+					}
+				}
+
+				slog.Warn("rejected invalid request parameters",
+					"err", err,
+					"request_id", httpx.RequestIDFromContext(r.Context()),
+					"method", r.Method,
+					"path", r.URL.Path,
+				)
+
+				// Name the offending parameter - it is in the published spec,
+				// so it discloses nothing - but not the binding error itself.
+				// InvalidParamFormatError is the only one of the generated
+				// param errors this route can raise: both parameters are
+				// optional (so never RequiredParamError), and the generator
+				// declares TooManyValuesForParamError without ever
+				// constructing it - a repeated ?limit= arrives wrapped in an
+				// InvalidParamFormatError like any other binding failure.
+				detail := "one or more query parameters are invalid"
+				var invalidFormat *openapi.InvalidParamFormatError
+				if errors.As(err, &invalidFormat) {
+					detail = fmt.Sprintf("invalid value for query parameter %q", invalidFormat.ParamName)
+				}
+				httpx.WriteProblem(w, r, http.StatusBadRequest, detail)
+			},
 		})
 
 	// Middleware order (outer -> inner): RequestID, Logging, Recovery, MaxBytes.
