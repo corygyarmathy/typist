@@ -170,7 +170,13 @@ New paths (all default-protected, no `security: []`):
 - `POST /api/v1/sessions` → `201 SessionSummary`, `400`, `401`
 - `GET /api/v1/sessions` (`cursor`, `limit`) → `200 SessionPage`, `400`, `401`
 
-New schemas: `Lesson {words[], targets[]}`, `Observation {attempts, errors, total_millis}`, `SessionSubmission {keys, ngrams}` (both `additionalProperties: Observation`), `SessionSummary {id, wpm, accuracy, completed_at}`, `SessionPage {sessions[], next_cursor?}`.
+New schemas:
+
+- `Lesson {words[], targets[]}`,
+- `Observation {attempts, errors, total_millis}`,
+- `SessionSubmission {keys, ngrams}` (both `additionalProperties: Observation`),
+- `SessionSummary {id, wpm, accuracy, completed_at}`,
+- `SessionPage {sessions[], next_cursor?}`.
 
 And **finalise `Competency`**, which is still the phase-2 placeholder `type: object`: `{keys, ngrams, ngram_tier, target_wpm}` with a new `ItemScore {score, samples, last_practiced}`. Restate it from [`../schema.md`](../schema.md), not from the Go type - the point of the spec is to be an independent statement of the shape, the same argument `marshal_test.go` made in phase 3.
 
