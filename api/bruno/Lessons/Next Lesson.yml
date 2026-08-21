@@ -1,0 +1,50 @@
+info:
+  name: Next Lesson
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/v1/lessons/next"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.words
+      operator: isDefined
+    - expression: res.body.targets
+      operator: isDefined
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Generate the next lesson for the authenticated user. 200 with {words, targets},
+  401 if unauthenticated.
+
+  Sends Authorization: Bearer {{token}} - run Register or Login first.
+
+  Nothing is written: the endpoint reads user_progress.competency and runs it
+  through the pure generator, so it is safe to send repeatedly. Two calls in a
+  row return DIFFERENT words (the generator is seeded per request) but the same
+  targets, which are a function of state that has not changed.
+
+  What to look for on a freshly registered user: every word is built only from
+  e, t, a and o - the four starting keys. A character outside that set means
+  the unlock set leaked.
+
+  targets is telemetry - the high-need items the lesson was built around. It
+  holds at most five entries and may hold fewer early on, so do not assert a
+  count on it.
+
+  ASSERTS 200, WHICH IS RED UNTIL step 3 of docs/plans/phase-4-sessions.md
+  lands. Until then the route is stubbed and answers 501 problem+json; a 401
+  here instead means the token is missing or expired, not that the stub is gone.

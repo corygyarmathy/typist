@@ -1,0 +1,73 @@
+info:
+  name: List Sessions
+  type: http
+  seq: 2
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/v1/sessions?limit=2"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        // Stash the cursor for "List Sessions (Next Page)", the same way
+        // Register/Login stash the token - the point of a keyset cursor is
+        // that it is opaque, so hand-copying it between requests is exactly
+        // the chore worth automating.
+        //
+        // Clearing it on the last page matters: next_cursor is absent once
+        // the history runs out, and leaving the previous page's value in the
+        // environment would let the next-page request silently re-fetch a
+        // window you have already seen.
+        if (res.status === 200) {
+          bru.setEnvVar("sessionCursor", res.body.next_cursor || "");
+        }
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.sessions
+      operator: isDefined
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  First page of session history, newest first. 200 with {sessions, next_cursor},
+  400 on a bad cursor or limit, 401 if unauthenticated.
+
+  limit is 1..100 and defaults to 20; it is pinned to 2 here so the paging
+  actually pages after three or four submissions rather than fitting on one
+  screen. Send Submit Session a few times first.
+
+  ## Keyset, not OFFSET
+
+  The page is ordered by (completed_at DESC, id DESC) and the cursor encodes
+  the last row's (completed_at, id) pair. id is in there because completed_at
+  is not unique - two sessions submitted in the same instant would otherwise
+  repeat or skip a row at the page boundary. Rows inserted while you page stay
+  correctly outside the window, which OFFSET cannot promise.
+
+  next_cursor is base64url and deliberately opaque; it is NOT signed, and does
+  not need to be, because every query is scoped by the user_id the auth
+  middleware put in the context. The worst a forged cursor can do is move your
+  own window.
+
+  ## Worth poking
+
+  - ?limit=abc, no token -> 401, not 400. Parameter binding runs before the
+    auth middleware in the generated code, so this is a deliberate re-check in
+    cmd/server/router.go rather than something you get for free.
+  - ?limit=abc, with a token -> 400 problem+json naming the parameter.
+  - ?limit=0 or ?limit=101 -> 400, once step 6 enforces the range. The spec
+    carries the bounds today but nothing reads them yet.
+
+  ASSERTS 200, WHICH IS RED UNTIL step 6 of docs/plans/phase-4-sessions.md
+  lands. Until then the route is stubbed and answers 501 problem+json.

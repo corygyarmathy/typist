@@ -1,0 +1,55 @@
+info:
+  name: List Sessions (Next Page)
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/v1/sessions?limit=2&cursor={{sessionCursor}}"
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        // Re-stash, so this request walks forward one page each time you send
+        // it rather than sticking on page two.
+        if (res.status === 200) {
+          bru.setEnvVar("sessionCursor", res.body.next_cursor || "");
+        }
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.sessions
+      operator: isDefined
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Walk forward through session history. Send List Sessions once to seed
+  sessionCursor, then send this repeatedly - each response re-stashes the next
+  cursor, so it advances a page per click.
+
+  You know you have reached the end when the response carries no next_cursor.
+  The request after that sends cursor= (empty), because the script cleared it.
+
+  What an empty cursor should do is a step 6 decision that is not made yet, and
+  this request is how you will notice: treating "" as "no cursor" quietly
+  restarts from page one, while rejecting it is a 400. Rejecting is the more
+  honest of the two - an empty cursor is a client bug, not a request for the
+  first page, which is spelled by omitting the parameter. Decide it, then say
+  which here.
+
+  Returning next_cursor whenever a full page comes back also means the last
+  page costs one extra empty request. The alternative is LIMIT n+1; the plan
+  leaves the choice to step 6 and asks only that it be written down.
+
+  ASSERTS 200, WHICH IS RED UNTIL step 6 of docs/plans/phase-4-sessions.md
+  lands. Until then the route is stubbed and answers 501 problem+json.
