@@ -48,15 +48,21 @@ Pure and parallelisable with phases 1–2. `cmd/corpusgen` → embedded artifact
 
 ### Phase 4 - Progress & sessions vertical (closes the server loop)
 
-`sessions` migration, per-context sqlc for `progress` / `session`, repositories, services. Wire `GET /lessons/next` (pure read), `GET /progress`, `GET /sessions` (keyset cursor), and the cross-context `POST /sessions` - the transactional write: `SELECT … FOR UPDATE` on `user_progress`, `engine.ApplyResult`, server-derived WPM/accuracy, both writes, commit (see the write flow in [`architecture.md`](architecture.md)).
+Per-context sqlc for `progress` / `session`, repositories, services. Wire `GET /lessons/next` (pure read), `GET /progress`, and the cross-context `POST /sessions` - the transactional write: `SELECT … FOR UPDATE` on `user_progress`, `engine.ApplyResult`, server-derived WPM/accuracy, both writes, commit (see the write flow in [`architecture.md`](architecture.md)). The `sessions` migration was written in phase 1 and stands as-is.
 
-**Done when:** a scripted loop (register → next → submit → progress) shows competency changing across calls; the FOR-UPDATE write is covered by a concurrency test.
+**Done when:** register → next → submit → progress shows competency changing across calls; the lost update is reproduced by hand in two `psql` sessions and then pinned by a concurrency test.
+
+> **Scope cut, 2026-08-22.** `GET /sessions` (keyset cursor) and the `(user_id, completed_at DESC, id DESC)` index it needs moved to phase 5, to land with the screen that reads them - nothing consumes session history until the TUI exists, and an index with no query is maintained on every insert for no reader. The route stays declared in the spec answering `501`. Reasoning, and the queries already worked out, in the [phase 4 plan](plans/phase-4-sessions.md#revision---phase-4-was-cut-down-2026-08-22).
 
 ### Phase 5 - Standalone TUI client
 
-Bubble Tea: API client layer (token storage in `$XDG_STATE_HOME`, bearer attach), the typing screen implementing **force-correction input and the per-item attribution rules** from the engine doc, a results screen, and the progress / keyboard heatmap. `cmd/tui` only.
+Bubble Tea: API client layer (token storage in `$XDG_STATE_HOME`, bearer attach), the typing screen implementing **force-correction input and the per-item attribution rules** from the engine doc, a results screen, and the progress / keyboard heatmap.
 
-**Done when:** the full loop is playable against the local server, and the observations the client submits match the engine's attribution spec.
+Plus the two items phase 4 deferred to their consumers, each landing with the screen that reads it: **`GET /sessions`** with the keyset cursor (Decision 5 of the [phase 4 plan](plans/phase-4-sessions.md) has the two queries and the cursor format already reasoned out) and the **`(user_id, completed_at DESC, id DESC)` migration** it needs. So this phase is `cmd/tui` plus that one endpoint, not `cmd/tui` alone.
+
+Also the first phase with a human in the loop, which makes it the place to revisit the two engine defects carried from phase 3 - `targetRaiseScore` parking every score at ~0.82, and the `allMastered` AND-quantifier. Phase 4 deliberately changed no constant: a robot submitting fabricated observations cannot say whether a setpoint is wrong for a person.
+
+**Done when:** the full loop is playable against the local server, the observations the client submits match the engine's attribution spec, and the history screen pages through real sessions.
 
 ### Phase 6 - Package & demo locally
 
