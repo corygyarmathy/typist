@@ -42,3 +42,25 @@ func (h *Handler) GetProgress(
 	}
 	return openapi.GetProgress200JSONResponse(competency), nil
 }
+
+func (h *Handler) GetNextLesson(
+	ctx context.Context,
+	req openapi.GetNextLessonRequestObject,
+) (openapi.GetNextLessonResponseObject, error) {
+	userID, ok := httpx.UserIDFromContext(ctx)
+	if !ok {
+		// the middleware guarantees a user ID here, so this is an internal server error
+		return nil, fmt.Errorf("failed to get userID from context")
+	}
+
+	engineLesson, err := h.service.NextLesson(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("getting next lesson: %w", err)
+	}
+
+	var lesson openapi.Lesson
+	lesson.Targets = engineLesson.Targets
+	lesson.Words = engineLesson.Words
+
+	return openapi.GetNextLesson200JSONResponse(lesson), nil
+}
