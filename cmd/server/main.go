@@ -83,7 +83,7 @@ func run() error {
 	authSvc := auth.NewService(dbPool, newProgressInitialiser(corpusProvider), authn, hasher)
 	authHandler := auth.NewHandler(authSvc)
 
-	progressSvc := progress.NewService(dbPool)
+	progressSvc := progress.NewService(dbPool, corpusProvider)
 	progressHandler := progress.NewHandler(progressSvc)
 
 	api := &API{ready: dbPool.Ping, auth: authHandler, progress: progressHandler}

@@ -86,7 +86,7 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 	}
 
 	authSvc := auth.NewService(pool, newProgressInitialiser(corpusProvider), authn, hasher)
-	progressSvc := progress.NewService(pool)
+	progressSvc := progress.NewService(pool, corpusProvider)
 
 	api := &API{
 		ready:    pool.Ping,

@@ -12,3 +12,4 @@ package progress
 import "errors"
 
 var ErrProgressNotFound = errors.New("user progress not found in database") // -> 500 (default)
+var ErrEmptyLesson = errors.New("generated lesson was empty")               // -> 500 (default)

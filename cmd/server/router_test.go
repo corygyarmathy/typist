@@ -90,15 +90,6 @@ func TestRouter(t *testing.T) {
 			wantCType:  "application/problem+json",
 		},
 		{
-			name:       "next lesson stub",
-			method:     "GET",
-			target:     "/api/v1/lessons/next",
-			token:      true,
-			ready:      readyOK,
-			wantStatus: 501,
-			wantCType:  "application/problem+json",
-		},
-		{
 			name:       "list sessions without a token",
 			method:     "GET",
 			target:     "/api/v1/sessions?limit=5",

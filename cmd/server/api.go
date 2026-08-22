@@ -97,13 +97,11 @@ func (a *API) GetProgress(
 // is user_progress.competency, which progress owns. Lessons are generated and
 // never stored, so there is no lesson context to own the noun - the endpoint
 // is a projection of progress state through engine.NextLesson.
-//
-// TODO(phase-4, step 3): return a.progress.GetNextLesson(ctx, req).
 func (a *API) GetNextLesson(
 	ctx context.Context,
 	req openapi.GetNextLessonRequestObject,
 ) (openapi.GetNextLessonResponseObject, error) {
-	return nil, errNotImplemented
+	return a.progress.GetNextLesson(ctx, req)
 }
 
 // SubmitSession records a completed lesson: the transactional write that folds

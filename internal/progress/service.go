@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
+	"time"
 
 	"github.com/corygyarmathy/typist/internal/engine"
 	"github.com/google/uuid"
@@ -33,23 +35,47 @@ func (s *Initialiser) CreateInitial(ctx context.Context, userID uuid.UUID) error
 }
 
 type Service struct {
-	repo Repository
-	pool *pgxpool.Pool
+	repo    Repository
+	pool    *pgxpool.Pool
+	corpus  engine.Corpus
+	newRand func() *rand.Rand
+	now     func() time.Time
 }
 
 func NewService(
 	pool *pgxpool.Pool,
+	corpus engine.Corpus,
 ) *Service {
 	return &Service{
-		repo: newPgxRepository(pool),
-		pool: pool,
+		repo:    newPgxRepository(pool),
+		pool:    pool,
+		corpus:  corpus,
+		newRand: func() *rand.Rand { return rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())) },
+		now:     time.Now,
 	}
 }
 
 func (s *Service) GetProgress(ctx context.Context, userID uuid.UUID) ([]byte, error) {
 	userProgress, err := s.repo.GetUserProgress(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("getting user progress from db: %w", err)
+		return nil, fmt.Errorf("getting user progress: %w", err)
 	}
 	return userProgress, nil
+}
+
+func (s *Service) NextLesson(ctx context.Context, userID uuid.UUID) (engine.Lesson, error) {
+	userProgress, err := s.repo.GetUserProgress(ctx, userID)
+	if err != nil {
+		return engine.Lesson{}, fmt.Errorf("loading competency: %w", err)
+	}
+	var competency engine.CompetencyState
+	if err := json.Unmarshal(userProgress, &competency); err != nil {
+		return engine.Lesson{}, fmt.Errorf("unmarshalling stored competency: %w", err)
+	}
+
+	lesson := engine.NextLesson(competency, s.corpus, s.now(), s.newRand())
+	if len(lesson.Words) == 0 {
+		return engine.Lesson{}, ErrEmptyLesson
+	}
+	return lesson, nil
 }
