@@ -1,18 +1,4 @@
-# Local development environment (server url from openapi.yaml).
-#
-# NOTE: the OpenCollection env-file format is not documented anywhere public,
-# so the shape below is a best-effort guess. If Bruno does not pick these up,
-# create the environment once via the Bruno UI (Configure > Environments) and
-# it will rewrite this file in the exact shape your version expects.
-#
-# userEmail / userPassword are throwaway dev credentials - NOT real secrets.
-# token is flagged secret: it is set at runtime by the Login/Register
-# after-response script, so its value is not committed here.
-#
-# sessionCursor is likewise runtime-only, set by the List Sessions
-# after-response script. It is NOT secret - a keyset cursor is an opaque
-# (completed_at, id) pair, unsigned, and every query is scoped by the user_id
-# the auth middleware supplies, so it authorises nothing on its own.
+name: Local
 variables:
   - name: baseUrl
     value: http://localhost:8080
@@ -20,8 +6,7 @@ variables:
     value: dev@example.com
   - name: userPassword
     value: password123
-  - name: token
-    value: ""
-    secret: true
+  - secret: true
+    name: token
   - name: sessionCursor
     value: ""
