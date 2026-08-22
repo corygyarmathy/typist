@@ -2,18 +2,32 @@
 
 > A granular, session-to-session build plan for phase 4 of [`../roadmap.md`](../roadmap.md). The roadmap says _what_ phase 4 is and _when_ it's done; [`../architecture.md`](../architecture.md) has the write flow; [`../schema.md`](../schema.md) has the tables and the cursor rule; this says _in what order we build it_ and _why each decision was made_. It is a living plan - update it as we go.
 
+## Revision - phase 4 was cut down (2026-08-22)
+
+Everything below was written before any of phase 4 existed, and it was written in enough detail to follow without thinking. That is its own failure mode: a plan specific enough to hand to a stranger has already done the reasoning it was supposed to prompt. Three changes came out of noticing that, recorded here rather than quietly applied.
+
+**`GET /sessions` moves to phase 5.** Nothing reads session history until the TUI has a screen for it. The gate is _is there a consumer_, and there is not one - the history is readable with `psql` in the meantime. That takes the keyset cursor, `ParseCursor`, `ErrInvalidCursor`, the identical-`completed_at` tie-break and the paging integration test with it. Decision 5 stays in place below: it is deferred, not withdrawn, and phase 5 should not re-derive it from scratch.
+
+**The composite index goes with it.** `(user_id, completed_at DESC, id DESC)` exists to serve the keyset query. With no query there is nothing to serve, only an index Postgres maintains on every insert for no reader. So `0004` stands exactly as written and the index arrives with the query that needs it, at which point the column order is obvious rather than asserted.
+
+**The concurrency test is reordered, not cut.** Step 7 now reproduces the lost update by hand in two `psql` sessions _before_ the Go test is written. A test for a race you have never watched happen is a ritual, and a ritual is the one thing this project cannot afford: the point is being able to defend every line, and "the plan said to" is not a defence. The same logic shrank step 8 from twenty iterations to one.
+
+What survives is the part with no speculation in it - `POST /sessions`, the derivation, the validation, the transaction. That was always the phase.
+
 ## How this phase is different (read first)
 
 Phase 3 was pure functions with no network edge, so the failing **test** was the driver. Phase 4 has an HTTP edge again, so **phase 2's driver comes back**: write the contract, generate, stub to 501, `curl` the route, and let each failing call pull the next file into existence. That is the mode that worked before; use it.
 
-What is genuinely new - and it is only one thing - is **`POST /sessions`**: the first request that writes across two bounded contexts inside one transaction, and the first that accepts a rich body from an untrusted client. Everything else in this phase is a read you already know how to build. Budget accordingly: `GET /lessons/next` and `GET /sessions` are an afternoon each; `POST /sessions` is the phase.
+What is genuinely new - and it is only one thing - is **`POST /sessions`**: the first request that writes across two bounded contexts inside one transaction, and the first that accepts a rich body from an untrusted client. Everything else in this phase is a read you already know how to build. Budget accordingly: `GET /lessons/next` was an afternoon; `POST /sessions` is the phase.
 
 **Engine tuning is not in this phase.** See [Engine tuning is out of scope](#engine-tuning-is-out-of-scope-and-why) - this matters enough to be its own section, because the carry-over note from phase 3 points here and the honest answer is "not yet."
 
 ## Where we are
 
 - Branch to build on: `main` (phases 1-3 complete and merged, 2026-08-20).
-- **The `sessions` table already exists.** `migrations/0004_create_sessions_table.sql` was written in phase 1 and is applied. The roadmap's "sessions migration" bullet is therefore already done _except_ for one defect: the migration creates `CREATE INDEX sessions_completed_at_idx ON sessions (completed_at)`, but [`../schema.md`](../schema.md) specifies `(user_id, completed_at DESC)` - the keyset query filters by `user_id` first, so the existing index cannot serve it. Phase 4 adds `0005` to fix that; it does **not** edit `0004`.
+- **The `sessions` table already exists and phase 4 leaves it alone.** `migrations/0004_create_sessions_table.sql` was written in phase 1 and is applied. It creates `CREATE INDEX sessions_completed_at_idx ON sessions (completed_at)` where [`../schema.md`](../schema.md) specifies `(user_id, completed_at DESC)` - the keyset query filters by `user_id` first, so the existing index cannot serve it. That defect is real, and it is now phase 5's, along with the query that exposes it.
+
+  Worth keeping from the argument about how to fix it, because the conclusion outlived the change: amending an applied migration is safe exactly when it has run nowhere you do not control, and **goose is what makes forgetting silent**. `goose_db_version` stores a version number and no content hash, so an edited `0004` is skipped rather than re-run on any database that already has version 4, and `provider.Up` returns `nil` either way. The environments that would diverge here are the local `.pgdata/` cluster (survives `make db-down`) and the docker `postgres-data` volume (survives `make docker-down`); CI provisions a fresh Postgres per run, so the one environment that reports back is the one guaranteed never to catch it.
 - **The stubs to fill in** (all currently one-line `TODO(phase-4)` comments):
   - `internal/session/handler.go`, `service.go`, `repository.go`, `models.go`
   - `sqlc.yaml` - the session block exists, commented out. Uncomment it.
@@ -21,20 +35,23 @@ What is genuinely new - and it is only one thing - is **`POST /sessions`**: the 
 - **The pattern to copy for the cross-context write** is already in the repo: phase 2's `auth.ProgressInitialiser` + `func(pgx.Tx) auth.ProgressInitialiser` factory, wired in `cmd/server/wiring.go`. `POST /sessions` is the same shape with a different interface. Read `internal/auth/service.go:Register` before starting step 5 - it is the transaction skeleton (begin, deferred rollback, tx-bound repositories, commit) you will reproduce.
 - **`api/openapi.yaml:42-55`** carries a comment listing the phase-4 surface, and `Competency` at line 244 is still `type: object` with a "finalised in phase 4" note. Both are this phase's work.
 
-## Definition of done (from the roadmap)
+## Definition of done (revised - see the [revision note](#revision---phase-4-was-cut-down-2026-08-22))
 
-> A scripted loop (register → next → submit → progress) shows competency changing across calls; the FOR-UPDATE write is covered by a concurrency test.
+> `POST /sessions` folds a submission into competency inside one transaction; the lost update is reproduced by hand and then pinned by a concurrency test; `GET /sessions` moves to phase 5 with the screen that reads it.
 
 Concretely, phase 4 ships:
 
-- [ ] `GET /api/v1/lessons/next` - loads competency, calls `engine.NextLesson`, returns words + targets. No writes.
+- [x] `GET /api/v1/lessons/next` - loads competency, calls `engine.NextLesson`, returns words + targets. No writes. _(2026-08-22)_
+- [x] `GET /api/v1/progress` - already served; phase 4 finalised its schema in the spec.
 - [ ] `POST /api/v1/sessions` - the transactional write: `SELECT … FOR UPDATE` → `engine.ApplyResult` → server-derived WPM/accuracy → insert session + update competency → commit.
-- [ ] `GET /api/v1/sessions` - keyset-paginated history.
-- [ ] `GET /api/v1/progress` - already serves; phase 4 finalises its schema in the spec.
-- [ ] Migration `0005` - the `(user_id, completed_at DESC, id DESC)` index.
-- [ ] `internal/session`: models, repository (+ sqlc), service, handler.
+- [ ] `internal/session`: models, `CreateSession` (+ sqlc), repository, service, handler.
 - [ ] `internal/progress`: `LoadForUpdate` / `Save` on a tx-bound store, plus the two queries.
-- [ ] Unit tests for the pure derivation, service tests against fakes, a **concurrency test** proving no lost update, and an **e2e scripted loop** proving competency moves.
+- [ ] Unit tests for the pure derivation, service tests against fakes, a **concurrency test** proving no lost update, and an **e2e submission** proving competency moves.
+
+Moved to phase 5, each landing with the screen that consumes it:
+
+- `GET /api/v1/sessions` - keyset-paginated history. The route stays declared in the spec and answers `501`. A declared-and-unimplemented route is an honest statement that it is planned, and `TestRouter` already pins both its `401` and its `501`.
+- The `(user_id, completed_at DESC, id DESC)` index and the migration that adds it.
 
 ## Decisions (locked in for phase 4)
 
@@ -103,7 +120,9 @@ func NewStore(tx pgx.Tx) *Store   // tx-bound only; there is no pool-bound Store
 
 Tx-bound only is deliberate: `LoadForUpdate` issues `SELECT … FOR UPDATE`, and a row lock outside a transaction is released immediately, which would be a silently useless lock. Making the constructor take `pgx.Tx` means that mistake does not compile.
 
-### 5. Keyset pagination via two named queries, not one query with nullable parameters
+### 5. Keyset pagination via two named queries, not one query with nullable parameters (deferred to phase 5)
+
+> Deferred with `GET /sessions`, not withdrawn - see the [revision note](#revision---phase-4-was-cut-down-2026-08-22). The reasoning below is the reasoning phase 5 should start from; re-deriving it there would be work already done.
 
 ```sql
 -- name: ListSessionsFirstPage :many
@@ -213,20 +232,16 @@ No migration, no new SQL, no transaction. It closes the engine↔HTTP seam and g
 
 **Checkpoint:** register → `GET /lessons/next` → a lesson of `e/t/a/o` words only (the four starting keys).
 
-### Step 4 - Migration `0005` and the session persistence layer
+### Step 4 - The session persistence layer
 
-- `make migrate-new name=index_sessions_by_user`, then:
-  ```sql
-  CREATE INDEX sessions_user_completed_at_idx ON sessions (user_id, completed_at DESC, id DESC);
-  DROP INDEX sessions_completed_at_idx;
-  ```
-  Down reverses both. Do **not** edit `0004`.
+**No migration.** `0004` stands as written; the composite index moved to phase 5 with the query that needs it.
+
 - Uncomment the session block in `sqlc.yaml`.
-- `internal/session/queries.sql`: `CreateSession`, plus the two list queries from Decision 5. `make sqlc`.
-- `internal/session/models.go`: `Session {ID, WPM, Accuracy, CompletedAt}`, a `Cursor` type with `Encode`/`ParseCursor`, and the error sentinels (`ErrInvalidObservation` → 400, `ErrInvalidCursor` → 400). Register them in `router.go`'s `ResponseErrorHandlerFunc`.
+- `internal/session/queries.sql`: `CreateSession`, and only that - the two list queries from Decision 5 go with `GET /sessions`. `make sqlc`.
+- `internal/session/models.go`: `Session {ID, WPM, Accuracy, CompletedAt}` and the `ErrInvalidObservation` → 400 sentinel, registered in `router.go`'s `ResponseErrorHandlerFunc`. (`Cursor`, `ParseCursor` and `ErrInvalidCursor` are phase 5's.)
 - `internal/session/repository.go`: `Repository` interface + `pgxRepository` over `db.DBTX` - the same shape as `auth`, and the reason one type serves both the pool and the tx.
 
-**Prove it:** a repository integration test inserts three sessions and pages through them with `limit=2`, asserting no repeats and no gaps. Insert two rows with an **identical `completed_at`** on purpose - that is the case the `id` tie-break exists for and the one a naive cursor gets wrong.
+**Prove it:** a repository integration test inserts one session and reads it back, asserting the row survives the `NUMERIC` ↔ `float64` conversion from Decision 6 intact. That conversion is the only thing at this layer that can be quietly wrong - a wrong `accuracy` is still a valid `accuracy`, so nothing else in the stack will notice.
 
 ### Step 5 - `POST /sessions`, the transactional write (the phase)
 
@@ -252,15 +267,34 @@ Then the handler: decode the generated request type into an `engine.Result` (thi
 
 **Checkpoint:** register → `GET /lessons/next` → hand-build a `Result` covering the lesson's keys → `POST /sessions` → `201` with a plausible WPM → `GET /progress` shows the samples went up.
 
-### Step 6 - `GET /sessions`
+### Step 6 - `GET /sessions` (moved to phase 5)
 
-Handler decodes `cursor` and `limit`, service calls the right query, response carries `next_cursor` only when a full page came back. Straightforward after step 4 - it is one branch and a base64 decode.
+Deferred with Decision 5. What was here still holds and is worth carrying over: the handler decodes `cursor` and `limit`, the service calls the right query, and the response carries `next_cursor` only when a full page came back.
 
-> Decide once and comment it: returning `next_cursor` whenever `len(rows) == limit` means the last page costs one extra empty request. The alternative is `LIMIT n+1` and returning `n`. Take whichever, but say which and why - it is the kind of small deliberate choice worth being able to defend.
+> The choice left open - return `next_cursor` whenever `len(rows) == limit`, so the last page costs one extra empty request, or `LIMIT n+1` and return `n` - is exactly the kind of small deliberate call worth being able to defend, and it should be made in front of a screen that is actually paging through history rather than in the abstract.
 
 ### Step 7 - The concurrency test (the DoD's second half)
 
-`internal/session/service_integration_test.go`. Shape:
+**Reproduce the lost update by hand before writing any Go.** This is the reordering the [revision note](#revision---phase-4-was-cut-down-2026-08-22) is about. The test below is only defensible if it encodes something you have watched happen; written first, it is a shape copied from a plan, and "the plan said to" is not an answer to _why is this test here_. Two `psql` sessions against the dev database:
+
+```sql
+-- Terminal A                            -- Terminal B
+BEGIN;                                   BEGIN;
+SELECT competency FROM user_progress     SELECT competency FROM user_progress
+  WHERE user_id = '…';                     WHERE user_id = '…';
+-- both now hold the same document, and both compute "samples + 10" from it
+UPDATE user_progress SET competency
+  = <A's answer> WHERE user_id = '…';
+COMMIT;                                  UPDATE user_progress SET competency
+                                           = <B's answer> WHERE user_id = '…';
+                                         COMMIT;
+```
+
+Read `samples` back: it moved by 10, not 20. B overwrote A with a document computed before A existed - that is the lost update, and it is the exact shape of two `POST /sessions` requests racing. Now add `FOR UPDATE` to both `SELECT`s and run it again: B's `SELECT` **blocks** until A commits, then reads A's committed document and adds to it. 20.
+
+Ten minutes, and afterwards the two fiddly details below stop being arbitrary - they are the two ways of accidentally not reproducing what you just saw.
+
+Only then, `internal/session/service_integration_test.go`. Shape:
 
 1. Register a user.
 2. Launch **N = 8** goroutines, each submitting the same single-key observation (`{'e': {Attempts: 10, Errors: 0, TotalMillis: 2000}}`), released together from a `sync.WaitGroup` barrier.
@@ -270,19 +304,23 @@ Handler decodes `cursor` and `limit`, service calls the right query, response ca
 
 **Confirm it red by mutation** - the phase-3 habit that made those tests trustworthy: delete `FOR UPDATE` from the query and re-run. Samples should land somewhere well under 80. If it stays green, the test is not testing what you think.
 
-### Step 8 - The scripted loop e2e (the DoD's first half)
+### Step 8 - The e2e submission (the DoD's first half)
 
-Extend `cmd/server/e2e_test.go`: register → `GET /lessons/next` → fabricate a `Result` from the returned words → `POST /sessions` → `GET /progress`, asserting competency moved; loop ~20 times and assert a **fifth key has unlocked** (the initial set is four).
+Extend `cmd/server/e2e_test.go`: register → `GET /lessons/next` → fabricate a `Result` from the returned words → `POST /sessions` → `GET /progress`, asserting competency moved.
+
+**One iteration, not twenty.** The original step looped ~20 times and asserted a fifth key had unlocked. That is re-testing the _engine_: unlocking is `progression.go`'s behaviour, and `harness_test.go` already drove a good and a struggling learner through the alphabet in phase 3. What is new at the HTTP boundary is that a submission survives the round trip and lands in Postgres, and one iteration proves that. Twenty buys duplicated coverage, a slower test, and a fixture to keep working.
 
 The fabricated result does not need to be realistic - the phase-3 harness's `simulate` is an internal test helper and cannot be imported, and copying it here would be building a second simulator to maintain. This test wants a _known_ result, not a plausible one: perfect accuracy at a comfortable interval, derived from the words the server just sent. Keep it to about fifteen lines.
 
 ## Testing strategy
 
-- **Pure unit, no DB:** `derive` (accuracy and WPM against hand-computed values; the ngram double-count guarded by a case where `Ngrams` is populated and the answer must not change); validation rejects each malformed shape; cursor encode/decode round-trips and rejects garbage.
+- **Pure unit, no DB:** `derive` (accuracy and WPM against hand-computed values; the ngram double-count guarded by a case where `Ngrams` is populated and the answer must not change); validation rejects each malformed shape. (Cursor round-tripping goes to phase 5 with the cursor.)
 - **Service, against fakes:** `Submit` with a fake `Repository` and fake `CompetencyStore` - asserts the order of operations and that a validation failure never begins a transaction.
-- **Repository integration (needs `DATABASE_URL`):** paging including the identical-`completed_at` tie, and the `FOR UPDATE` behaviour.
-- **Concurrency:** step 7.
+- **Repository integration (needs `DATABASE_URL`):** the `NUMERIC` ↔ `float64` round trip. (Paging and the identical-`completed_at` tie go to phase 5.)
+- **Concurrency:** step 7, and only after the hand-run version of it.
 - **E2e:** step 8.
+
+The pattern worth carrying forward from step 3: every test written in this phase should be **confirmed red by mutation** before it is trusted. Step 3's two were - deleting the `ErrEmptyLesson` guard reds the failure case, and seeding the test generator from the clock reds the determinism case. A test that has never failed is a claim nobody has checked.
 
 Reuse the existing `newTestPool` / `uniqueEmail` / `cleanupUser` helpers and their conventions - DB tests skip when `DATABASE_URL` is unset, and isolate on a unique email rather than truncating shared tables.
 
@@ -291,7 +329,7 @@ Reuse the existing `newTestPool` / `uniqueEmail` / `cleanupUser` helpers and the
 - **`go.mod`:** expect **no new dependencies**. Everything needed is stdlib or already present (`pgx`, `pgtype`, `uuid`, `encoding/base64`).
 - **`sqlc.yaml`:** uncomment the session block. No other change.
 - **ADRs:** expect **none new.** The cross-context transactional write is already ADR 0003 (modular monolith) plus the write flow in `architecture.md`; JSONB competency is ADR 0009; keyset pagination is a schema-doc decision, not a cross-cutting opaque fork. Decisions 1-8 above are local structuring choices and belong here and in code comments. Keeping the ADR index from sprawling is itself the call to be able to defend.
-- **`docs/schema.md`:** update the migration list with `0005` and note the corrected index name.
+- **`docs/schema.md`:** no migration-list change - `0004` stands. The doc specifies a `(user_id, completed_at DESC)` index the database does not have; note there that the applied index is `sessions_completed_at_idx` and that the specified one lands in phase 5 with `GET /sessions`, so the doc and the database stop disagreeing silently.
 - **`docs/architecture.md`:** the write flow's step 3 says `engine.ApplyResult(state, result, now)` - it takes a corpus (corrected in phase 3). Fix while you are in there.
 - **`api/openapi.yaml`:** the phase-4 planning comment at lines 42-55 and the "finalised in phase 4" note on `Competency` both get deleted once satisfied.
 
@@ -315,3 +353,4 @@ Deliberately out of phase 4. Each is an increment on something working, not a pr
 - **What a locked-key submission should report.** Decision 3 makes it a silent `201`. A `200` with a per-item "ignored" list is the alternative, and it is more work than it is worth until a client can be wrong by accident rather than on purpose.
 - **Whether `GET /progress` should serve derived values** (mean score, unlocked count, a heatmap-ready projection) or stay a raw document passthrough. Phase 5's heatmap is the consumer that will answer this; do not guess now.
 - **Session history retention.** The table is append-only and unbounded. Nothing to do for one user; note it before a public deployment (phase 7).
+- **The gap between `docs/schema.md` and the applied index.** Deliberate, and it closes in phase 5 in the same commit as the keyset query. Flagged here so that a reader who finds the mismatch first reads it as a decision rather than a bug.
