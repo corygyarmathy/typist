@@ -26,6 +26,8 @@ Stay **vertical** at every step. Get a thin request flowing through `mux → ser
 
 Phase numbers align with the `phase-N` markers already in the code TODOs.
 
+> **Sequencing override, 2026-08-22 - see [minimal path to a demo](plans/minimal-path-to-demo.md).** Phases 4-6 are being run in a different order than written below: finish `POST /sessions`, then a **single-screen** TUI, then the recorded demo. Everything else in phases 4 and 5 - the concurrency test, `GET /sessions`, force-correction input, the heatmap, XDG token storage - moves behind that demo, each with a trigger recorded in the linked plan. The phases below are still the shape of the work; that plan is the order it is being done in, and why.
+
 ### Phase 1 - Platform spine & walking skeleton
 
 Config loader (`Secret` type, `_FILE` support, production guard), structured logging, pgx pool, goose-at-startup under an advisory lock, mux with Recovery / RequestID / Logging middleware, `/healthz` + `/readyz`, the RFC 7807 error helper. `users` migration only.
