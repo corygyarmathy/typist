@@ -10,6 +10,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// proves interface is implemented
+var _ Repository = &fakeRepo{}
+
 type fakeRepo struct {
 	registered bool               // whether the email is registered in the db
 	err        error              // specify error to be 'returned'
@@ -21,6 +24,7 @@ func (f *fakeRepo) EmailRegistered(ctx context.Context, email string) (bool, err
 	return f.registered, f.err
 }
 func (f *fakeRepo) CreateUser(context.Context) (uuid.UUID, error) { return uuid.UUID{}, nil }
+
 func (f *fakeRepo) CreatePasswordCredential(context.Context, uuid.UUID, string, string) error {
 	return nil
 }
