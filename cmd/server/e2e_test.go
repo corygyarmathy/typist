@@ -71,7 +71,7 @@ func cleanupUser(t *testing.T, pool *pgxpool.Pool, email string) {
 	})
 }
 
-func TestE2E_RegisterLoginProgress(t *testing.T) {
+func TestE2E_RegisterLoginProgressLesson(t *testing.T) {
 	pool := newTestPool(t)
 
 	// Build the main wiring main.go builds
@@ -199,5 +199,57 @@ func TestE2E_RegisterLoginProgress(t *testing.T) {
 	}
 	if rec.Header().Get("Content-Type") != "application/problem+json" {
 		t.Fatalf("progress empty token: 'Content-Type' = %s, want 'application/problem+json'", rec.Header().Get("Content-Type"))
+	}
+
+	// 6. GET /api/v1/lessons/next WITH the token -> 200; every character of
+	// every word is a key this user has already unlocked.
+	//
+	// This is phase 3's engine invariant (a lesson never uses a locked key)
+	// re-asserted at the HTTP boundary, which is where it first matters to
+	// someone outside the engine package. It deliberately does not pin the
+	// words themselves: the handler seeds a fresh generator per request
+	// (Decision 7), so the lesson is different every run and only the
+	// invariant is stable. Determinism is pinned one layer down, in
+	// internal/progress/service_test.go, where the seed can be injected.
+	rec = do(http.MethodGet, "/api/v1/lessons/next", "", loginToken.Token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("next lesson: status = %d, want %v (body: %s)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "application/json" {
+		t.Errorf("next lesson: 'Content-Type' = %s, want 'application/json'", rec.Header().Get("Content-Type"))
+	}
+
+	var lesson openapi.Lesson
+	if err := json.NewDecoder(rec.Body).Decode(&lesson); err != nil {
+		t.Fatalf("next lesson: decode response: %v", err)
+	}
+
+	// Non-nil, not merely non-empty: api/openapi.yaml declares both arrays
+	// required, and a nil slice marshals as null rather than [].
+	if lesson.Words == nil {
+		t.Fatal("next lesson: words is null, want an array")
+	}
+	if lesson.Targets == nil {
+		t.Error("next lesson: targets is null, want an array")
+	}
+
+	unlocked := slices.Sorted(maps.Keys(got.Keys))
+	for _, word := range lesson.Words {
+		for _, r := range word {
+			if _, ok := got.Keys[string(r)]; !ok {
+				t.Errorf("next lesson: word %q uses key %q, which is not unlocked; unlocked keys are %v",
+					word, string(r), unlocked)
+			}
+		}
+	}
+
+	// 7. GET /api/v1/lessons/next with NO token -> 401. The route is protected
+	// by default (it is absent from publicRoutes), and this is what proves it.
+	rec = do(http.MethodGet, "/api/v1/lessons/next", "", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("next lesson: status = %d, want %v (body: %s)", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "application/problem+json" {
+		t.Errorf("next lesson no token: 'Content-Type' = %s, want 'application/problem+json'", rec.Header().Get("Content-Type"))
 	}
 }
