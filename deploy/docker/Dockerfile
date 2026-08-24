@@ -7,7 +7,7 @@
 # Build with:   docker build -f deploy/docker/Dockerfile -t typist .
 # (built from repo root so the build context contains go.mod and migrations)
 
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 WORKDIR /src
 
 # The base image's Go is the only toolchain the build may use. The official
