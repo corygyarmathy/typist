@@ -23,13 +23,48 @@ division of labour is deliberate and non-negotiable:
   out issues, name the principle behind each, and explain your reasoning — but
   the author makes the changes. When they explain code back to you, poke holes:
   that conversation is interview rehearsal.
+- **Proactive where it costs nothing.** Flag convention violations, missing ADRs,
+  simplification opportunities, and unclear naming unprompted — but ask before
+  acting on anything substantial.
 - **Narrow exceptions.** Generated code (sqlc, oapi-codegen) and ADR/doc drafting
   may be collaborative *when the author explicitly asks*. Everything else is
   advisory only. When in doubt, ask before writing anything.
+- **Git operations are opt-in.** Never commit, push, or create PRs unless
+  explicitly asked. The author drives merges via the flow in `HACKING.md`;
+  branch protection blocks direct pushes to `main` regardless.
+
+## Engineering principles
+
+The taste to optimize for when weighing approaches:
+
+- **Explicit over clever.** Boring, readable code wins ties. If a line needs a
+  paragraph to explain it, rewrite it.
+- **Standard library first.** Every dependency carries a justification (ADRs
+  0017, 0019).
+- **Errors wrapped once with context** (`fmt.Errorf("loading config: %w", err)`),
+  handled at the boundary, never swallowed.
+- **Duplication over the wrong abstraction.** Extract on the second or third real
+  occurrence, not the first hunch.
+- **Interfaces defined where consumed**, sized to what the caller needs — not
+  where implemented.
+
+## Decision capture
+
+A decision made in dialogue must outlive the conversation, but records scale to
+the size of the decision:
+
+- **Architectural choices** — shape of the system, technology selections,
+  patterns later code will copy — get an ADR in `docs/adr/`.
+- **Minor design tweaks** get the smallest durable record: a doc comment stating
+  the why, or a test name asserting the invariant. No ADR.
+
+Do not document everything; a record nobody will re-read is overhead, not
+memory. When a discussion concludes with a decision, offer to draft whichever
+record fits.
 
 ## Commands
 
-Use `nix develop` for a reproducible shell with all tools, or ensure Go 1.26+, `goose`, `sqlc`, `oapi-codegen`, and `golangci-lint` are on `$PATH`.
+Use `nix develop` for a reproducible shell with all tools, or ensure Go 1.26+, `goose`, `sqlc`, `oapi-codegen`, and `golangci-lint` are on `$PATH`. After any change, run `make lint && make test` and report the results before calling it done.
 
 ```bash
 make run           # run the server (go run ./cmd/server)
@@ -39,12 +74,13 @@ make lint          # golangci-lint run ./...
 make fmt           # gofmt -w . && go mod tidy
 make build         # go build -o bin/server ./cmd/server
 
-# Run a single test package
-go test -run TestName ./internal/engine/...
+# Run one test function
+go test -race -run TestName ./internal/engine/...
 
 # Code generation (run after changing SQL queries or openapi.yaml)
-make sqlc          # regenerates internal/db/ from queries.sql files
-make openapi       # regenerates server interfaces from api/openapi.yaml
+make sqlc          # regenerates internal/<context>/db/ from queries.sql files
+make openapi       # regenerates internal/openapi/ from api/openapi.yaml
+make corpus        # regenerates the embedded corpus (cmd/corpusgen)
 
 # Database migrations
 make migrate-up                        # apply all pending
@@ -63,11 +99,12 @@ make docker-down
 
 ## Architecture
 
-A Go modular monolith. Three binaries share the domain code:
+A Go modular monolith. Domain code is shared across binaries:
 
-- `cmd/server/` — REST API server; the main binary
-- `cmd/tui/` — Bubble Tea TUI client that talks to a configured API URL
-- `cmd/sshd/` — wish-based SSH server serving the same TUI to remote connections
+- `cmd/server/` — REST API server; the main binary today
+- `cmd/corpusgen/` — regenerates the embedded corpus from committed sources (`make corpus`)
+
+Planned (see `docs/plans/`): `cmd/tui/`, a Bubble Tea TUI client that talks to a configured API URL, and `cmd/sshd/`, a wish-based SSH server serving the same TUI to remote connections.
 
 ### Bounded contexts (`internal/`)
 
@@ -91,7 +128,7 @@ Cross-cutting infrastructure used by all contexts: config loading, database pool
 ### Code generation
 
 - **sqlc**: Each context owns a `queries.sql` file and gets its own generated package under `internal/<context>/db/` (per-context, not one shared `internal/db` — a context cannot reach into another's persistence). Run `make sqlc` after editing any `.sql` query file.
-- **oapi-codegen**: `api/openapi.yaml` is the source of truth for the API contract. Server interfaces are generated from it; handlers implement them. Run `make openapi` after editing the spec.
+- **oapi-codegen**: `api/openapi.yaml` is the source of truth for the API contract. Generated server interfaces and types land in `internal/openapi/` (do not hand-edit); handlers implement them. Run `make openapi` after editing the spec.
 
 ### Configuration
 
@@ -103,4 +140,11 @@ Loaded from environment variables by `internal/platform/config`. Required: `DATA
 
 ### ADRs
 
-Decisions are recorded in `docs/adr/`. Key ones: ADR-0003 (modular monolith), ADR-0009 (JSONB for competency state), ADR-0013 (corpus embedded, not DB-backed), ADR-0014 (engine runs both server-side and client-side).
+Decisions are recorded in `docs/adr/`. Key ones: ADR-0003 (modular monolith), ADR-0009 (JSONB for competency state), ADR-0013 (corpus embedded, not DB-backed), ADR-0014 (engine runs both server-side and client-side), ADR-0019 (stdlib HTTP router), ADR-0024 (argon2id password hashing).
+
+## Documentation map
+
+- `HACKING.md` — workflow and CI: change flow, branch protection, recovery procedures
+- `docs/architecture.md` — system design; `docs/engine.md` — the lesson engine; `docs/schema.md` — database schema
+- `docs/plans/` and `docs/roadmap.md` — phased plans and status
+- `docs/adr/` — the why behind architectural decisions
