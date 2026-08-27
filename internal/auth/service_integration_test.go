@@ -18,8 +18,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// newTestPool opens a pool against DATABASE_URL, migrates, and truncates the
-// auth/progress tables so each test starts from a known-empty database.
+// newTestPool opens a pool against DATABASE_URL, and migrates. Note that
+// trauncation isn't global to allow parallel testing. cleanupUser() is used to
+// reset after test.
+//
 // Skips entirely when DATABASE_URL is unset (so local `make test` stays green).
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
