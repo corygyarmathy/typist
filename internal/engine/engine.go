@@ -69,7 +69,7 @@ const (
 	lambdaNgramNgramPhase = 3.0                // ngram boost once phaseIsNgrams
 	lessonTargets         = 5                  // high-need items a lesson records for telemetry
 	lessonWords           = 15                 // words per generated lesson
-	charsPerWord          = 5                  // assumed chars per average word, used to calc. WPM
+	charsPerWord          = 5                  // assumed chars per average word, used to calc. WPM. Also defined in session/service.go
 	minWordLen            = 2                  // min chars per word, used to generate words for lessons
 	maxWordLen            = 6                  // max chars per word, used to generate words for lessons
 	freqExponent          = 0.5                // flattens the corpus frequency distribution so the key-need factor can compete; see harness findings
