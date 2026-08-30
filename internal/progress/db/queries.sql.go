@@ -38,3 +38,33 @@ func (q *Queries) GetUserProgress(ctx context.Context, userID pgtype.UUID) ([]by
 	err := row.Scan(&competency)
 	return competency, err
 }
+
+const getUserProgressForUpdate = `-- name: GetUserProgressForUpdate :one
+SELECT competency
+FROM user_progress
+WHERE user_id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetUserProgressForUpdate(ctx context.Context, userID pgtype.UUID) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getUserProgressForUpdate, userID)
+	var competency []byte
+	err := row.Scan(&competency)
+	return competency, err
+}
+
+const updateUserProgress = `-- name: UpdateUserProgress :exec
+UPDATE user_progress
+SET competency = $2, updated_at = now()
+WHERE user_id = $1
+`
+
+type UpdateUserProgressParams struct {
+	UserID     pgtype.UUID
+	Competency []byte
+}
+
+func (q *Queries) UpdateUserProgress(ctx context.Context, arg UpdateUserProgressParams) error {
+	_, err := q.db.Exec(ctx, updateUserProgress, arg.UserID, arg.Competency)
+	return err
+}
