@@ -13,6 +13,8 @@ import (
 type Querier interface {
 	CreateUserProgress(ctx context.Context, arg CreateUserProgressParams) error
 	GetUserProgress(ctx context.Context, userID pgtype.UUID) ([]byte, error)
+	GetUserProgressForUpdate(ctx context.Context, userID pgtype.UUID) ([]byte, error)
+	UpdateUserProgress(ctx context.Context, arg UpdateUserProgressParams) error
 }
 
 var _ Querier = (*Queries)(nil)

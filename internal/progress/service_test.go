@@ -29,6 +29,23 @@ func (f *fakeRepo) GetUserProgress(ctx context.Context, userID uuid.UUID) ([]byt
 	return f.cs, f.err
 }
 
+// Not fakeable, covered by the concurrency test instead.
+func (f *fakeRepo) GetUserProgressForUpdate(
+	ctx context.Context,
+	userID uuid.UUID,
+) ([]byte, error) {
+	return f.cs, f.err
+}
+
+// Not fakeable, covered by the concurrency test instead.
+func (f *fakeRepo) UpdateUserProgress(
+	ctx context.Context,
+	userID uuid.UUID,
+	competency []byte,
+) error {
+	return f.err
+}
+
 // startingCompetency is the persisted document for a freshly-registered user:
 // the four starting keys unlocked at zero score.
 //
