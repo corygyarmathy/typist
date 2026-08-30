@@ -9,4 +9,18 @@
 //	models.go       - domain types shared across the layers
 package session
 
-// TODO: domain types live here.
+import (
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type Session struct {
+	ID          uuid.UUID
+	WPM         int
+	Accuracy    float64
+	CompletedAt time.Time
+}
+
+var ErrInvalidObservation = errors.New("provided item observation is invalid") // -> 400

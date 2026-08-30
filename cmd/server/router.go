@@ -9,6 +9,7 @@ import (
 	"github.com/corygyarmathy/typist/internal/auth"
 	"github.com/corygyarmathy/typist/internal/openapi"
 	"github.com/corygyarmathy/typist/internal/platform/httpx"
+	"github.com/corygyarmathy/typist/internal/session"
 )
 
 // maxRequestBodyBytes caps every request body. The current JSON bodies are a
@@ -98,6 +99,8 @@ func Router(api *API, v auth.Validator) http.Handler {
 					httpx.WriteProblem(w, r, http.StatusBadRequest, "the request body is empty")
 				case errors.Is(err, auth.ErrInvalidCredentials):
 					httpx.WriteProblem(w, r, http.StatusUnauthorized, "invalid email or password provided")
+				case errors.Is(err, session.ErrInvalidObservation):
+					httpx.WriteProblem(w, r, http.StatusBadRequest, "invalid item observation provided")
 				default:
 					// Unmapped error: log the real cause (correlated by request ID)
 					// before returning an opaque 500, so the detail isn't lost.
