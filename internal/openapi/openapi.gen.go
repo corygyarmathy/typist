@@ -9,9 +9,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -30,8 +33,21 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
-// Competency Placeholder for JSON competency object.
-type Competency = map[string]interface{}
+// Competency The user's whole competency state - the JSONB document persisted in user_progress.competency, served verbatim.
+// The two maps do not mean the same thing. keys is the unlock set: presence means unlocked. ngrams is a score cache, not an unlock set - which ngrams are in scope is derived from ngram_tier and the unlocked keys, so a missing entry means "in scope but never practised", not "unavailable".
+type Competency struct {
+	// Keys Per-key scores, keyed by the character itself ("e").
+	Keys map[string]ItemScore `json:"keys"`
+
+	// NgramTier How many of the frequency-ranked ngrams are in scope.
+	NgramTier int `json:"ngram_tier"`
+
+	// Ngrams Per-ngram scores for practised ngrams, keyed by the ngram ("th").
+	Ngrams map[string]ItemScore `json:"ngrams"`
+
+	// TargetWpm Tool-managed speed threshold, never user-set (ADR 0012). Starts at 40 and is raised by the engine as the user improves.
+	TargetWpm int `json:"target_wpm"`
+}
 
 // Health defines model for Health.
 type Health struct {
@@ -41,6 +57,27 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// ItemScore One item's competency estimate. Restated from docs/schema.md rather than transcribed from engine.ItemScore, deliberately: the spec is an independent statement of the shape, so a rename in Go that forgets the wire format shows up as a drift here rather than as silent breakage.
+type ItemScore struct {
+	// LastPracticed Drives recency decay, so neglected items resurface.
+	LastPracticed time.Time `json:"last_practiced"`
+
+	// Samples Keystrokes observed for this item. Expresses confidence - a high score off three keystrokes is not trustworthy.
+	Samples int `json:"samples"`
+
+	// Score Smoothed competency estimate.
+	Score float64 `json:"score"`
+}
+
+// Lesson A generated practice prompt. Lessons are generated per request and never stored, so there is no lesson id and nothing to fetch one by.
+type Lesson struct {
+	// Targets The high-need items (keys or ngrams) this lesson was built to exercise. Telemetry only - at most engine.lessonTargets (5), possibly fewer, and nothing depends on it.
+	Targets []string `json:"targets"`
+
+	// Words The words to type, in order. Always engine.lessonWords (15) of them.
+	Words []string `json:"words"`
+}
+
 // LoginRequest Login request.
 type LoginRequest struct {
 	// Email Email string.
@@ -48,6 +85,19 @@ type LoginRequest struct {
 
 	// Password Plaintext password string.
 	Password string `json:"password"`
+}
+
+// Observation Client-aggregated performance for one item across one lesson. The client submits observations only - the server derives WPM and accuracy from them, so neither is accepted here.
+// Note the cross-field rule OpenAPI 3.0 cannot express: errors must not exceed attempts. The service rejects a violation with 400.
+type Observation struct {
+	// Attempts Times this item was typed in the lesson.
+	Attempts int `json:"attempts"`
+
+	// Errors Of those attempts, how many were wrong.
+	Errors int `json:"errors"`
+
+	// TotalMillis Cumulative milliseconds across all attempts. Integral on the wire; the engine widens it to float64 for averaging.
+	TotalMillis int `json:"total_millis"`
 }
 
 // Problem RFC 7807 problem detail, served as application/problem+json. Mirrors internal/platform/httpx.Problem. Additional extension members may be added later without breaking clients.
@@ -77,6 +127,37 @@ type RegisterRequest struct {
 	Password string `json:"password"`
 }
 
+// SessionPage One keyset-paginated page of session history, newest first.
+type SessionPage struct {
+	// NextCursor Pass as the cursor query parameter to fetch the following page. Absent on the last page. Opaque and unsigned - every query is scoped by the authenticated user, so the worst a forged cursor can do is move the caller's own window.
+	NextCursor *string          `json:"next_cursor,omitempty"`
+	Sessions   []SessionSummary `json:"sessions"`
+}
+
+// SessionSubmission A completed lesson's observations. Items the user has not unlocked are accepted and silently ignored by the engine (a 201 with no competency change for that item) - the client must not be able to expand its own unlock set by submitting.
+type SessionSubmission struct {
+	// Keys Per-key observations, keyed by the character itself ("e"), not by its code point. Word-boundary spaces are not scored and must not appear here. Must not be empty.
+	Keys map[string]Observation `json:"keys"`
+
+	// Ngrams Per-ngram observations, keyed by the ngram ("th"). May be empty. These are scored but never summed into WPM or accuracy - a bigram's total_millis covers two keystrokes and a middle character sits in two bigram windows, so summing both sides double-counts.
+	Ngrams map[string]Observation `json:"ngrams"`
+}
+
+// SessionSummary The server-derived record of one completed lesson - one row of the sessions table. Returned by POST /sessions and by the history list.
+type SessionSummary struct {
+	// Accuracy Derived as 1 - errors/attempts, summed over the keys map only.
+	Accuracy float64 `json:"accuracy"`
+
+	// CompletedAt Server clock at submission. The same instant the engine records as last_practiced on every item in the submission.
+	CompletedAt time.Time `json:"completed_at"`
+
+	// Id The session's identifier; also half of the pagination cursor.
+	Id openapi_types.UUID `json:"id"`
+
+	// Wpm Derived words per minute, (chars / 5) / (millis / 60000), summed over the keys map only, truncated to an integer because the column is INT. Slightly conservative against the standard five-characters-per-word convention, because unscored word boundary spaces are not counted as chars.
+	Wpm int `json:"wpm"`
+}
+
 // TokenResponse JWT response, issued on successful register or login.
 type TokenResponse struct {
 	// ExpiresIn Seconds until token expiry.
@@ -89,11 +170,23 @@ type TokenResponse struct {
 	TokenType string `json:"token_type"`
 }
 
+// ListSessionsParams defines parameters for ListSessions.
+type ListSessionsParams struct {
+	// Cursor Opaque cursor from a previous page's next_cursor. Omit for the first page. Malformed cursors are a 400.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size. The default is applied by the handler, not the generated code.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // LoginUserJSONRequestBody defines body for LoginUser for application/json ContentType.
 type LoginUserJSONRequestBody = LoginRequest
 
 // RegisterUserJSONRequestBody defines body for RegisterUser for application/json ContentType.
 type RegisterUserJSONRequestBody = RegisterRequest
+
+// SubmitSessionJSONRequestBody defines body for SubmitSession for application/json ContentType.
+type SubmitSessionJSONRequestBody = SessionSubmission
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -103,9 +196,18 @@ type ServerInterface interface {
 	// RegisterUser Register user
 	// (POST /api/v1/auth/register)
 	RegisterUser(w http.ResponseWriter, r *http.Request)
+	// GetNextLesson Get the next lesson.
+	// (GET /api/v1/lessons/next)
+	GetNextLesson(w http.ResponseWriter, r *http.Request)
 	// GetProgress Return user's current competency state.
 	// (GET /api/v1/progress)
 	GetProgress(w http.ResponseWriter, r *http.Request)
+	// ListSessions Get past sessions (completed lessons).
+	// (GET /api/v1/sessions)
+	ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams)
+	// SubmitSession Submit completed lesson.
+	// (POST /api/v1/sessions)
+	SubmitSession(w http.ResponseWriter, r *http.Request)
 	// GetHealthz Liveness check
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
@@ -151,11 +253,85 @@ func (siw *ServerInterfaceWrapper) RegisterUser(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetNextLesson operation middleware
+func (siw *ServerInterfaceWrapper) GetNextLesson(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNextLesson(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProgress operation middleware
 func (siw *ServerInterfaceWrapper) GetProgress(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProgress(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSessionsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitSession operation middleware
+func (siw *ServerInterfaceWrapper) SubmitSession(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitSession(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -318,6 +494,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/register", wrapper.RegisterUser)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/auth/login", wrapper.LoginUser)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/progress", wrapper.GetProgress)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/lessons/next", wrapper.GetNextLesson)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/sessions", wrapper.ListSessions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/sessions", wrapper.SubmitSession)
 
 	return m
 }
@@ -422,6 +601,41 @@ func (response RegisterUser409ApplicationProblemPlusJSONResponse) VisitRegisterU
 	return err
 }
 
+type GetNextLessonRequestObject struct {
+}
+
+type GetNextLessonResponseObject interface {
+	VisitGetNextLessonResponse(w http.ResponseWriter) error
+}
+
+type GetNextLesson200JSONResponse Lesson
+
+func (response GetNextLesson200JSONResponse) VisitGetNextLessonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNextLesson401ApplicationProblemPlusJSONResponse Problem
+
+func (response GetNextLesson401ApplicationProblemPlusJSONResponse) VisitGetNextLessonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProgressRequestObject struct {
 }
 
@@ -446,6 +660,106 @@ func (response GetProgress200JSONResponse) VisitGetProgressResponse(w http.Respo
 type GetProgress401ApplicationProblemPlusJSONResponse Problem
 
 func (response GetProgress401ApplicationProblemPlusJSONResponse) VisitGetProgressResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionsRequestObject struct {
+	Params ListSessionsParams
+}
+
+type ListSessionsResponseObject interface {
+	VisitListSessionsResponse(w http.ResponseWriter) error
+}
+
+type ListSessions200JSONResponse SessionPage
+
+func (response ListSessions200JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessions400ApplicationProblemPlusJSONResponse Problem
+
+func (response ListSessions400ApplicationProblemPlusJSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessions401ApplicationProblemPlusJSONResponse Problem
+
+func (response ListSessions401ApplicationProblemPlusJSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitSessionRequestObject struct {
+	Body *SubmitSessionJSONRequestBody
+}
+
+type SubmitSessionResponseObject interface {
+	VisitSubmitSessionResponse(w http.ResponseWriter) error
+}
+
+type SubmitSession201JSONResponse SessionSummary
+
+func (response SubmitSession201JSONResponse) VisitSubmitSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitSession400ApplicationProblemPlusJSONResponse Problem
+
+func (response SubmitSession400ApplicationProblemPlusJSONResponse) VisitSubmitSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitSession401ApplicationProblemPlusJSONResponse Problem
+
+func (response SubmitSession401ApplicationProblemPlusJSONResponse) VisitSubmitSessionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -521,9 +835,18 @@ type StrictServerInterface interface {
 	// RegisterUser Register user
 	// (POST /api/v1/auth/register)
 	RegisterUser(ctx context.Context, request RegisterUserRequestObject) (RegisterUserResponseObject, error)
+	// GetNextLesson Get the next lesson.
+	// (GET /api/v1/lessons/next)
+	GetNextLesson(ctx context.Context, request GetNextLessonRequestObject) (GetNextLessonResponseObject, error)
 	// GetProgress Return user's current competency state.
 	// (GET /api/v1/progress)
 	GetProgress(ctx context.Context, request GetProgressRequestObject) (GetProgressResponseObject, error)
+	// ListSessions Get past sessions (completed lessons).
+	// (GET /api/v1/sessions)
+	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
+	// SubmitSession Submit completed lesson.
+	// (POST /api/v1/sessions)
+	SubmitSession(ctx context.Context, request SubmitSessionRequestObject) (SubmitSessionResponseObject, error)
 	// GetHealthz Liveness check
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
@@ -633,6 +956,30 @@ func (sh *strictHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetNextLesson operation middleware
+func (sh *strictHandler) GetNextLesson(w http.ResponseWriter, r *http.Request) {
+	var request GetNextLessonRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNextLesson(ctx, request.(GetNextLessonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNextLesson")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNextLessonResponseObject); ok {
+		if err := validResponse.VisitGetNextLessonResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetProgress operation middleware
 func (sh *strictHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
 	var request GetProgressRequestObject
@@ -650,6 +997,63 @@ func (sh *strictHandler) GetProgress(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProgressResponseObject); ok {
 		if err := validResponse.VisitGetProgressResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSessions operation middleware
+func (sh *strictHandler) ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams) {
+	var request ListSessionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSessions(ctx, request.(ListSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSessionsResponseObject); ok {
+		if err := validResponse.VisitListSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SubmitSession operation middleware
+func (sh *strictHandler) SubmitSession(w http.ResponseWriter, r *http.Request) {
+	var request SubmitSessionRequestObject
+
+	var body SubmitSessionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SubmitSession(ctx, request.(SubmitSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SubmitSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SubmitSessionResponseObject); ok {
+		if err := validResponse.VisitSubmitSessionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -39,21 +39,6 @@ security:
 # option, because BaseURL prefixes every route uniformly and would drag the
 # probes under /api/v1 with it.
 #
-# Phase 4 work: define paths as the handlers are built.
-# Potential initial surface:
-#
-#   POST   /api/v1/auth/register
-#   POST   /api/v1/auth/login
-#   POST   /api/v1/auth/refresh
-#
-#   GET    /api/v1/progress        - current competency snapshot
-#   GET    /api/v1/lessons/next    - generate next lesson
-#   POST   /api/v1/sessions        - submit a completed session result
-#   GET    /api/v1/sessions        - list past sessions (paginated)
-#
-# Generate server interfaces with oapi-codegen and implement them in
-# each domain package's handler.go.
-
 # NOTE: on error media types: 404 (unknown path) and 405 (wrong method) are
 # emitted by Go's http.ServeMux before any handler runs, so they carry the
 # stdlib's text/plain body, NOT application/problem+json. They are therefore
@@ -165,16 +150,116 @@ paths:
     get:
       summary: Return user's current competency state.
       description: >
-        Returns the user's competency state. Body shape is provisional; finalised
-        in phase 4 when the adaptive engine defines the canonical schema.
+        Returns the user's full competency state as persisted. Returns 401 if
+        not authenticated.
       operationId: getProgress
       responses:
         "200":
-          description: Placeholder for JSON competency state.
+          description: The user's competency state.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Competency"
+        "401":
+          description: Unauthorised, not authenticated.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/lessons/next:
+    get:
+      summary: Get the next lesson.
+      description: >
+        Returns 200 and the next lesson for the user based on their competency
+        state. Returns 401 if not authenticated.
+      operationId: getNextLesson
+      responses:
+        "200":
+          description: Lesson contents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lesson"
+        "401":
+          description: Unauthorised, not authenticated.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/v1/sessions:
+    get:
+      summary: Get past sessions (completed lessons).
+      description: >
+        Returns 200 and requested past sessions. Returns 400 if request
+        malformed. Returns 401 if not authenticated.
+      operationId: listSessions
+      parameters:
+        # Keyset pagination, not OFFSET: the cursor encodes the last row's
+        # (completed_at, id) so the window stays correct when rows are
+        # inserted between page fetches. See docs/schema.md and the phase-4
+        # plan, decision 5.
+        - name: cursor
+          in: query
+          required: false
+          description: >
+            Opaque cursor from a previous page's next_cursor. Omit for the
+            first page. Malformed cursors are a 400.
+          schema:
+            type: string
+            maxLength: 128
+        - name: limit
+          in: query
+          required: false
+          description: Page size. The default is applied by the handler, not the generated code.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Past sessions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionPage"
+        "400":
+          description: Request malformed / invalid.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Unauthorised, not authenticated.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    post:
+      summary: Submit completed lesson.
+      description: >
+        Returns 201 and the lesson summary, 400 on malformed request (invalid 
+        arguments), 401 on invalid credentials / not authenticated.
+      operationId: submitSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionSubmission"
+      responses:
+        "201":
+          description: Lesson summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionSummary"
+        "400":
+          description: Request malformed / invalid.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "401":
           description: Unauthorised, not authenticated.
           content:
@@ -241,9 +326,220 @@ components:
         expires_in:
           type: integer
           description: Seconds until token expiry.
+    Lesson:
+      type: object
+      description: >
+        A generated practice prompt. Lessons are generated per request and
+        never stored, so there is no lesson id and nothing to fetch one by.
+      required:
+        - words
+        - targets
+      properties:
+        words:
+          type: array
+          description: The words to type, in order. Always engine.lessonWords (15) of them.
+          items:
+            type: string
+            minLength: 2 # engine.minWordLen
+            maxLength: 6 # engine.maxWordLen
+        targets:
+          # No minItems: targets() returns min(lessonTargets, len(active
+          # items)), so early-game states legitimately yield fewer than five,
+          # and a seedless state yields none. A bound the server can violate
+          # is worse than no bound.
+          type: array
+          description: >
+            The high-need items (keys or ngrams) this lesson was built to
+            exercise. Telemetry only - at most engine.lessonTargets (5),
+            possibly fewer, and nothing depends on it.
+          items:
+            type: string
+          maxItems: 5
+    Observation:
+      type: object
+      description: >
+        Client-aggregated performance for one item across one lesson. The
+        client submits observations only - the server derives WPM and
+        accuracy from them, so neither is accepted here.
+
+        Note the cross-field rule OpenAPI 3.0 cannot express: errors must not
+        exceed attempts. The service rejects a violation with 400.
+      required:
+        - attempts
+        - errors
+        - total_millis
+      properties:
+        attempts:
+          type: integer
+          description: Times this item was typed in the lesson.
+          minimum: 1
+        errors:
+          type: integer
+          description: Of those attempts, how many were wrong.
+          minimum: 0
+        total_millis:
+          type: integer
+          description: >
+            Cumulative milliseconds across all attempts. Integral on the wire;
+            the engine widens it to float64 for averaging.
+          minimum: 1
+    SessionSubmission:
+      # Both fields are maps (type: object + additionalProperties), not
+      # arrays: this is engine.Result, whose Keys and Ngrams are
+      # map[rune]Observation and map[string]Observation. The property name is
+      # the item; the value is its Observation.
+      type: object
+      description: >
+        A completed lesson's observations. Items the user has not unlocked
+        are accepted and silently ignored by the engine (a 201 with no
+        competency change for that item) - the client must not be able to
+        expand its own unlock set by submitting.
+      required:
+        - keys
+        - ngrams
+      properties:
+        keys:
+          type: object
+          description: >
+            Per-key observations, keyed by the character itself ("e"), not by
+            its code point. Word-boundary spaces are not scored and must not
+            appear here. Must not be empty.
+          additionalProperties:
+            $ref: "#/components/schemas/Observation"
+          propertyNames:
+            maxLength: 1 # exactly one rune; the handler enforces it
+        ngrams:
+          type: object
+          description: >
+            Per-ngram observations, keyed by the ngram ("th"). May be empty.
+            These are scored but never summed into WPM or accuracy - a
+            bigram's total_millis covers two keystrokes and a middle
+            character sits in two bigram windows, so summing both sides
+            double-counts.
+          additionalProperties:
+            $ref: "#/components/schemas/Observation"
+    SessionSummary:
+      type: object
+      description: >
+        The server-derived record of one completed lesson - one row of the
+        sessions table. Returned by POST /sessions and by the history list.
+      required:
+        - id
+        - wpm
+        - accuracy
+        - completed_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The session's identifier; also half of the pagination cursor.
+        wpm:
+          type: integer
+          description: >
+            Derived words per minute, (chars / 5) / (millis / 60000), summed
+            over the keys map only, truncated to an integer because the
+            column is INT. Slightly conservative against the standard
+            five-characters-per-word convention, because unscored word
+            boundary spaces are not counted as chars.
+          minimum: 0
+        accuracy:
+          type: number
+          format: double
+          description: Derived as 1 - errors/attempts, summed over the keys map only.
+          minimum: 0
+          maximum: 1
+        completed_at:
+          type: string
+          format: date-time
+          description: >
+            Server clock at submission. The same instant the engine records
+            as last_practiced on every item in the submission.
+    SessionPage:
+      type: object
+      description: One keyset-paginated page of session history, newest first.
+      required:
+        - sessions
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionSummary"
+        next_cursor:
+          type: string
+          description: >
+            Pass as the cursor query parameter to fetch the following page.
+            Absent on the last page. Opaque and unsigned - every query is
+            scoped by the authenticated user, so the worst a forged cursor
+            can do is move the caller's own window.
+          maxLength: 128
+    ItemScore:
+      type: object
+      description: >
+        One item's competency estimate. Restated from docs/schema.md rather
+        than transcribed from engine.ItemScore, deliberately: the spec is an
+        independent statement of the shape, so a rename in Go that forgets
+        the wire format shows up as a drift here rather than as silent
+        breakage.
+      required:
+        - score
+        - samples
+        - last_practiced
+      properties:
+        score:
+          type: number
+          format: double
+          description: Smoothed competency estimate.
+          minimum: 0
+          maximum: 1
+        samples:
+          type: integer
+          description: >
+            Keystrokes observed for this item. Expresses confidence - a high
+            score off three keystrokes is not trustworthy.
+          minimum: 0
+        last_practiced:
+          type: string
+          format: date-time
+          description: Drives recency decay, so neglected items resurface.
     Competency:
       type: object
-      description: Placeholder for JSON competency object.
+      description: >
+        The user's whole competency state - the JSONB document persisted in
+        user_progress.competency, served verbatim.
+
+        The two maps do not mean the same thing. keys is the unlock set:
+        presence means unlocked. ngrams is a score cache, not an unlock set -
+        which ngrams are in scope is derived from ngram_tier and the unlocked
+        keys, so a missing entry means "in scope but never practised", not
+        "unavailable".
+      required:
+        - keys
+        - ngrams
+        - ngram_tier
+        - target_wpm
+      properties:
+        keys:
+          type: object
+          description: Per-key scores, keyed by the character itself ("e").
+          additionalProperties:
+            $ref: "#/components/schemas/ItemScore"
+          propertyNames:
+            maxLength: 1
+        ngrams:
+          type: object
+          description: Per-ngram scores for practised ngrams, keyed by the ngram ("th").
+          additionalProperties:
+            $ref: "#/components/schemas/ItemScore"
+        ngram_tier:
+          type: integer
+          description: How many of the frequency-ranked ngrams are in scope.
+          minimum: 0
+        target_wpm:
+          type: integer
+          description: >
+            Tool-managed speed threshold, never user-set (ADR 0012). Starts
+            at 40 and is raised by the engine as the user improves.
+          minimum: 0
     Health:
       type: object
       required: [status]

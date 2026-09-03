@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"maps"
 	"net/http/httptest"
 	"os"
@@ -21,61 +22,172 @@ func TestRouter(t *testing.T) {
 	readyOK := func(context.Context) error { return nil }
 	readyDown := func(context.Context) error { return errors.New("db down") }
 
+	// Keyed fields, so a case states only what it cares about and the zero
+	// value means "no token" / "no body".
 	tests := []struct {
 		name       string
 		method     string
 		target     string
+		token      bool   // send "Authorization: Bearer test-token"
+		body       string // request body; "" sends none
 		ready      func(context.Context) error
 		wantStatus int
 		wantCType  string // "" = don't check
 	}{
 		{
-			"healthz",
-			"GET",
-			"/healthz",
-			readyOK,
-			200,
-			"application/json",
+			name:       "healthz",
+			method:     "GET",
+			target:     "/healthz",
+			ready:      readyOK,
+			wantStatus: 200,
+			wantCType:  "application/json",
 		},
 		{
-			"readyz up",
-			"GET",
-			"/readyz",
-			readyOK,
-			200,
-			"application/json",
+			name:       "readyz up",
+			method:     "GET",
+			target:     "/readyz",
+			ready:      readyOK,
+			wantStatus: 200,
+			wantCType:  "application/json",
 		},
 		{
-			"readyz down",
-			"GET", "/readyz",
-			readyDown,
-			503,
-			"application/problem+json",
+			name:       "readyz down",
+			method:     "GET",
+			target:     "/readyz",
+			ready:      readyDown,
+			wantStatus: 503,
+			wantCType:  "application/problem+json",
 		},
 		{
 			// The 405 is emitted by http.ServeMux itself before any handler
 			// runs, so it carries the stdlib's default text/plain body rather
 			// than problem+json. See ADR 0019 for why this is accepted.
-			"wrong method",
-			"POST", "/healthz",
-			readyOK,
-			405,
-			"text/plain; charset=utf-8",
+			name:       "wrong method",
+			method:     "POST",
+			target:     "/healthz",
+			ready:      readyOK,
+			wantStatus: 405,
+			wantCType:  "text/plain; charset=utf-8",
 		},
 		{
 			// The auth gate rejects before the handler runs, so this needs no
 			// progress service wired in.
-			"protected route without a token",
-			"GET", "/api/v1/progress",
-			readyOK,
-			401,
-			"application/problem+json",
+			name:       "protected route without a token",
+			method:     "GET",
+			target:     "/api/v1/progress",
+			ready:      readyOK,
+			wantStatus: 401,
+			wantCType:  "application/problem+json",
+		},
+
+		// The phase-4 surface. Without a token: 401, with a token: 501.
+		{
+			name:       "next lesson without a token",
+			method:     "GET",
+			target:     "/api/v1/lessons/next",
+			ready:      readyOK,
+			wantStatus: 401,
+			wantCType:  "application/problem+json",
+		},
+		{
+			name:       "next lesson stub",
+			method:     "GET",
+			target:     "/api/v1/lessons/next",
+			token:      true,
+			ready:      readyOK,
+			wantStatus: 501,
+			wantCType:  "application/problem+json",
+		},
+		{
+			name:       "list sessions without a token",
+			method:     "GET",
+			target:     "/api/v1/sessions?limit=5",
+			ready:      readyOK,
+			wantStatus: 401,
+			wantCType:  "application/problem+json",
+		},
+		{
+			name:       "list sessions stub",
+			method:     "GET",
+			target:     "/api/v1/sessions?limit=5",
+			token:      true,
+			ready:      readyOK,
+			wantStatus: 501,
+			wantCType:  "application/problem+json",
+		},
+		{
+			name:       "submit session without a token",
+			method:     "POST",
+			target:     "/api/v1/sessions",
+			body:       `{"keys":{},"ngrams":{}}`,
+			ready:      readyOK,
+			wantStatus: 401,
+			wantCType:  "application/problem+json",
+		},
+		{
+			// The body must at least parse as SessionSubmission: the generated
+			// strict handler decodes it before calling *API, so a malformed
+			// body never reaches the stub. It short-circuits through
+			// RequestErrorHandlerFunc instead - see the case below.
+			name:       "submit session stub",
+			method:     "POST",
+			target:     "/api/v1/sessions",
+			token:      true,
+			body:       `{"keys":{},"ngrams":{}}`,
+			ready:      readyOK,
+			wantStatus: 501,
+			wantCType:  "application/problem+json",
+		},
+
+		// The two error paths the generated code owns rather than *API. Both
+		// default upstream to http.Error (text/plain, raw error text);
+		// router.go overrides them, and these cases pin the override.
+		{
+			// Body decode fails inside the strict handler, which runs AFTER
+			// RequireAuth - so this needs a token to reach the failure at all.
+			name:       "submit session with a malformed body",
+			method:     "POST",
+			target:     "/api/v1/sessions",
+			token:      true,
+			body:       `{"keys":`,
+			ready:      readyOK,
+			wantStatus: 400,
+			wantCType:  "application/problem+json",
+		},
+		{
+			name:       "list sessions with an unparseable limit",
+			method:     "GET",
+			target:     "/api/v1/sessions?limit=abc",
+			token:      true,
+			ready:      readyOK,
+			wantStatus: 400,
+			wantCType:  "application/problem+json",
+		},
+		{
+			// Parameter binding runs BEFORE the middleware chain, so without
+			// the re-check in ErrorHandlerFunc this answers 400 and names the
+			// limit parameter to an anonymous caller. 401 must win.
+			name:       "unparseable limit without a token is still a 401",
+			method:     "GET",
+			target:     "/api/v1/sessions?limit=abc",
+			ready:      readyOK,
+			wantStatus: 401,
+			wantCType:  "application/problem+json",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, tt.target, nil)
+			var body io.Reader
+			if tt.body != "" {
+				body = strings.NewReader(tt.body)
+			}
+			req := httptest.NewRequest(tt.method, tt.target, body)
+			if tt.token {
+				// noopValidator accepts anything; the gate only cares that a
+				// well-formed Bearer header is present and validates.
+				req.Header.Set("Authorization", "Bearer test-token")
+			}
 			rec := httptest.NewRecorder()
 
 			Router(&API{ready: tt.ready}, noopValidator{}).ServeHTTP(rec, req)

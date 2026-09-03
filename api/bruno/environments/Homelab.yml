@@ -15,3 +15,5 @@ variables:
   - name: token
     value: ""
     secret: true
+  - name: sessionCursor
+    value: ""

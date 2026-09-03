@@ -44,37 +44,54 @@ func RequireAuth(v Validator, public map[string]bool) func(http.Handler) http.Ha
 				return
 			}
 
-			// Pull the "Authorization" header. Missing → 401.
-			authHead := r.Header.Get("Authorization")
-			if authHead == "" {
-				httpx.WriteProblem(w, r, http.StatusUnauthorized, "missing or malformed bearer token")
-				return
-			}
-
-			// Split into scheme + token on the first space. The scheme must
-			// match "Bearer" CASE-INSENSITIVELY (RFC 7235) -> strings.EqualFold.
-			// Malformed -> 401.
-			scheme, token, ok := strings.Cut(authHead, " ")
+			id, detail, ok := Authenticate(v, r)
 			if !ok {
-				httpx.WriteProblem(w, r, http.StatusUnauthorized, "missing or malformed bearer token")
-				return
-			}
-			if !strings.EqualFold(scheme, "Bearer") {
-				httpx.WriteProblem(w, r, http.StatusUnauthorized, "missing or malformed bearer token")
+				httpx.WriteProblem(w, r, http.StatusUnauthorized, detail)
 				return
 			}
 
-			// v.Validate(token). Error -> 401.
-			id, err := v.Validate(token)
-			if err != nil {
-				httpx.WriteProblem(w, r, http.StatusUnauthorized, "authentication token failed to be validated")
-				return
-			}
-
-			// Success: inject the id with httpx.WithUserID, then
-			// next.ServeHTTP(w, r.WithContext(ctx)).
+			// Success: inject the id so handlers can read it back out with
+			// httpx.UserIDFromContext.
 			ctx := httpx.WithUserID(r.Context(), id)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// Authenticate resolves the caller's user ID from the request's bearer token.
+// On failure it returns ok=false plus the detail to report in the 401; it
+// never writes to a ResponseWriter, so a caller that is not the middleware can
+// use it to ask "would this request have been let through?".
+//
+// It is exported for exactly one such caller: cmd/server's ErrorHandlerFunc,
+// which oapi-codegen invokes for query-parameter binding failures before the
+// middleware chain runs (see the note in cmd/server/router.go). Pulling the
+// decision out here rather than re-parsing the header there is what stops a
+// security check from existing in two places and drifting apart.
+//
+// It deliberately does not consult the public-route set: whether a route needs
+// a token is route composition's business, and both callers already know the
+// answer before they get here.
+func Authenticate(v Validator, r *http.Request) (uuid.UUID, string, bool) {
+	const malformed = "missing or malformed bearer token"
+
+	// Pull the "Authorization" header. Missing -> 401.
+	authHead := r.Header.Get("Authorization")
+	if authHead == "" {
+		return uuid.Nil, malformed, false
+	}
+
+	// Split into scheme + token on the first space. The scheme must match
+	// "Bearer" case-insensitively (RFC 7235) -> strings.EqualFold.
+	scheme, token, ok := strings.Cut(authHead, " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
+		return uuid.Nil, malformed, false
+	}
+
+	id, err := v.Validate(token)
+	if err != nil {
+		return uuid.Nil, "authentication token failed to be validated", false
+	}
+
+	return id, "", true
 }
