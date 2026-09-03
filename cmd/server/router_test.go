@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/corygyarmathy/typist/internal/session"
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
@@ -118,15 +119,21 @@ func TestRouter(t *testing.T) {
 		{
 			// The body must at least parse as SessionSubmission: the generated
 			// strict handler decodes it before calling *API, so a malformed
-			// body never reaches the stub. It short-circuits through
+			// body never reaches the handler. It short-circuits through
 			// RequestErrorHandlerFunc instead - see the case below.
-			name:       "submit session stub",
+			//
+			// An empty keys map is the cheapest rejection the service has, and
+			// this is the only test that watches session.ErrInvalidObservation
+			// travel the whole way to a status code: the sentinel is wrapped
+			// four times between validate and here, and if any layer stopped
+			// wrapping it this case would read 500.
+			name:       "submit session rejects empty keys",
 			method:     "POST",
 			target:     "/api/v1/sessions",
 			token:      true,
 			body:       `{"keys":{},"ngrams":{}}`,
 			ready:      readyOK,
-			wantStatus: 501,
+			wantStatus: 400,
 			wantCType:  "application/problem+json",
 		},
 
@@ -181,7 +188,18 @@ func TestRouter(t *testing.T) {
 			}
 			rec := httptest.NewRecorder()
 
-			Router(&API{ready: tt.ready}, noopValidator{}).ServeHTTP(rec, req)
+			// The session service carries a nil pool, a nil store factory and a
+			// nil corpus on purpose. Every request this table makes is rejected
+			// by validate before Submit reaches pool.Begin, so the nils are
+			// never dereferenced - and a guard clause that stopped returning
+			// early would panic here rather than quietly opening a transaction.
+			// This is the same nil-pool technique auth.TestRegister_GuardClauses
+			// uses, and it keeps TestRouter a unit test with no database.
+			api := &API{
+				ready:   tt.ready,
+				session: session.NewHandler(session.NewService(nil, nil, nil)),
+			}
+			Router(api, noopValidator{}).ServeHTTP(rec, req)
 
 			if rec.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)

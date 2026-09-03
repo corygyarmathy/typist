@@ -8,6 +8,7 @@ import (
 	"github.com/corygyarmathy/typist/internal/auth"
 	"github.com/corygyarmathy/typist/internal/openapi"
 	"github.com/corygyarmathy/typist/internal/progress"
+	"github.com/corygyarmathy/typist/internal/session"
 )
 
 // Sentinels the composition-root error handler maps to HTTP statuses.
@@ -27,6 +28,7 @@ type API struct {
 	ready    func(ctx context.Context) error
 	auth     *auth.Handler
 	progress *progress.Handler
+	session  *session.Handler
 }
 
 // Compile-time proof that *API satisfies the generated interface. If a method
@@ -106,14 +108,11 @@ func (a *API) GetNextLesson(
 
 // SubmitSession records a completed lesson: the transactional write that folds
 // the submitted observations into competency and inserts the session row.
-//
-// TODO(phase-4, step 5): return a.session.SubmitSession(ctx, req), once API
-// carries a *session.Handler.
 func (a *API) SubmitSession(
 	ctx context.Context,
 	req openapi.SubmitSessionRequestObject,
 ) (openapi.SubmitSessionResponseObject, error) {
-	return nil, errNotImplemented
+	return a.session.SubmitSession(ctx, req)
 }
 
 // ListSessions returns a keyset-paginated page of the user's session history.
