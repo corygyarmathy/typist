@@ -18,7 +18,7 @@ func TestDerive(t *testing.T) {
 	cases := []struct {
 		name         string
 		res          engine.Result
-		wantWPM      int
+		wantWPM      int32
 		wantAccuracy float64
 	}{
 		{
