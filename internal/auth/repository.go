@@ -7,6 +7,7 @@ import (
 
 	"github.com/corygyarmathy/typist/internal/auth/db"
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -63,7 +64,7 @@ func (r *pgxRepository) CreatePasswordCredential(
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
 			return ErrEmailTaken
 		}
 		return fmt.Errorf("creating password credential in db: %w", err)
