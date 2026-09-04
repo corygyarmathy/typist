@@ -64,6 +64,8 @@ Plus the two items phase 4 deferred to their consumers, each landing with the sc
 
 Also the first phase with a human in the loop, which makes it the place to revisit the two engine defects carried from phase 3 - `targetRaiseScore` parking every score at ~0.82, and the `allMastered` AND-quantifier. Phase 4 deliberately changed no constant: a robot submitting fabricated observations cannot say whether a setpoint is wrong for a person.
 
+> **Scope note, 2026-09-04.** The typing screen's **input model** - force-correction plus the full per-key and per-bigram attribution rules - moved *forward* into chunk 2 of the [minimal path to a demo](plans/minimal-path-to-demo.md#chunk-2---one-tui-screen), which is a single-screen `cmd/tui`. It moved because it turned out to be cheaper inside the loop than beside it: force-correction is a smaller `Update` branch than free typing, and ngram attribution is one loop over the per-position state force-correction already requires. What remains here is everything around it - the error-state rendering, token storage, the results and history screens, and the heatmap.
+
 **Done when:** the full loop is playable against the local server, the observations the client submits match the engine's attribution spec, and the history screen pages through real sessions.
 
 ### Phase 6 - Package & demo locally
