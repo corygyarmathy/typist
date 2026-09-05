@@ -1,7 +1,7 @@
 # Common developer tasks. All commands assume you're in a `nix develop` shell
 # or have the equivalent tools on $PATH.
 
-.PHONY: help run watch test lint fmt build sqlc migrate-up migrate-down migrate-new openapi db-up db-down db-reset docker-up docker-down corpus
+.PHONY: help run watch tui test lint fmt build sqlc migrate-up migrate-down migrate-new openapi db-up db-down db-reset docker-up docker-down corpus
 
 # Local Nix-native Postgres. Data lives in a gitignored dir under the repo, so
 # `make db-reset` is a safe throwaway and nothing touches system Postgres.
@@ -16,6 +16,9 @@ run: ## Run the server locally (needs `make db-up` first)
 
 watch: ## Run the server with live reload, rebuilding on file change
 	wgo run ./cmd/server
+
+tui: ## Run the TUI client (needs a running server)
+	go run ./cmd/tui
 
 test: ## Run all tests with race detector
 	go test -race -cover ./...
