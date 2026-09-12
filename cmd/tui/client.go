@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/corygyarmathy/typist/internal/openapi"
@@ -47,7 +49,7 @@ func (c *Client) NextLesson(ctx context.Context) (openapi.Lesson, error) {
 	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode != http.StatusOK {
-		return openapi.Lesson{}, fmt.Errorf("HTTP error: %v", res.StatusCode)
+		return openapi.Lesson{}, errorFromResponse(res)
 	}
 
 	var lesson openapi.Lesson
@@ -58,4 +60,46 @@ func (c *Client) NextLesson(ctx context.Context) (openapi.Lesson, error) {
 	}
 
 	return lesson, nil
+}
+
+func errorFromResponse(res *http.Response) error {
+	var maxBytes int64 = 4 * 1024
+	if strings.HasPrefix(res.Header.Get("Content-Type"), "application/problem+json") {
+		var problem openapi.Problem
+		decoder := json.NewDecoder(io.LimitReader(res.Body, maxBytes))
+		err := decoder.Decode(&problem)
+		if err != nil {
+			return fmt.Errorf("HTTP error: %d, decoding problem JSON: %w", res.StatusCode, err)
+		}
+		return fmt.Errorf(
+			"title: %v. status: %v detail %v. instance %v",
+			problem.Title, problem.Status, deref(problem.Detail), deref(problem.Instance),
+		)
+	}
+
+	body, err := readResponseBody(res, maxBytes)
+	if err != nil {
+		return fmt.Errorf("HTTP error: %d, reading plain problem response body: %w", res.StatusCode, err)
+	}
+
+	// plaintext error
+	return fmt.Errorf("HTTP error: %d, body: %v", res.StatusCode, string(body))
+}
+
+func deref(s *string) string {
+	return *s
+}
+
+func readResponseBody(res *http.Response, maxBytes int64) (body []byte, err error) {
+	// Read one extra byte so we can detect truncation
+	data, err := io.ReadAll(io.LimitReader(res.Body, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+
+	if int64(len(data)) > maxBytes {
+		return data[:maxBytes], nil
+	}
+
+	return data, nil
 }

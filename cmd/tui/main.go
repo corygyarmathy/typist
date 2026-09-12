@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func main() {
@@ -31,14 +33,9 @@ func run() error {
 
 	client := NewClient(baseURL, token)
 
-	lesson, err := client.NextLesson(ctx)
-	if err != nil {
-		return fmt.Errorf("getting next lesson: %w", err)
-	}
-
-	fmt.Printf("Lesson generated: %d words\n", len(lesson.Words))
-	for _, w := range lesson.Words {
-		fmt.Printf("%s ", w)
+	p := tea.NewProgram(initialModel(ctx, client))
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("running tea app: %w", err)
 	}
 
 	return nil
