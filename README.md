@@ -10,11 +10,7 @@ characters and ngram patterns as you improve.
 
 ## Quickstart
 
-Live demo:
-
-```bash
-ssh typist.gyarmathy.co
-```
+Bring up the API and Postgres:
 
 ```bash
 git clone https://github.com/corygyarmathy/typist
@@ -27,6 +23,27 @@ The API is now available at `http://localhost:8080`. Health check:
 ```bash
 curl http://localhost:8080/healthz
 ```
+
+Every endpoint except registration and login is authenticated, so the TUI
+needs a bearer token. Register once (the password must be at least eight
+characters) and export the `token` from the response:
+
+```bash
+export TYPIST_TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"correcthorse"}' | jq -r .token)
+```
+
+Then play a lesson:
+
+```bash
+make tui
+```
+
+The client reads `TYPIST_API_URL` (default `http://localhost:8080`) and
+`TYPIST_TOKEN`. The token is not yet persisted between shells - see the
+`$XDG_STATE_HOME` token storage row in
+[`docs/plans/minimal-path-to-demo.md`](docs/plans/minimal-path-to-demo.md).
 
 ## Demo
 
