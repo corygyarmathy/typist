@@ -19,15 +19,17 @@ const (
 )
 
 type lessonMsg openapi.Lesson
+type summaryMsg openapi.SessionSummary
 type errMsg error
 
 type model struct {
-	state  state
-	client *Client
-	ctx    context.Context // stored here b/c tea.Cmd() can't take it
-	lesson openapi.Lesson
-	acc    *accumulator
-	err    error
+	state   state
+	client  *Client
+	ctx     context.Context // stored here b/c tea.Cmd() can't take it
+	lesson  openapi.Lesson
+	summary *openapi.SessionSummary
+	acc     *accumulator
+	err     error
 }
 
 func initialModel(ctx context.Context, client *Client) model {
@@ -71,12 +73,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.acc.Press(msg.Code, time.Now())
 			if m.acc.Done() {
 				m.state = stateDone
+				sub := m.acc.Submission()
+				return m, func() tea.Msg {
+					summary, err := m.client.SubmitSession(m.ctx, sub)
+					if err != nil {
+						return errMsg(fmt.Errorf("submitting session: %w", err))
+					}
+					return summaryMsg(summary)
+				}
 			}
 		}
+
 	case lessonMsg:
 		m.state = stateTyping
 		m.lesson = openapi.Lesson(msg)
 		m.acc = newAccumulator(m.lesson.Words, time.Now())
+		return m, nil
+
+	case summaryMsg:
+		summary := openapi.SessionSummary(msg)
+		m.summary = &summary
 		return m, nil
 
 	case errMsg:
@@ -114,9 +130,13 @@ func (m model) View() tea.View {
 
 	case stateDone:
 		s = string(m.acc.text) + "\n\n"
+		if m.summary == nil {
+			s += "Submitting...\n"
+			break
+		}
 		s += fmt.Sprintf(
-			"Finished: %d chars, %d errors\n",
-			len(m.acc.text), m.acc.Errors(),
+			"%d wpm, %.1f%% accuracy\n",
+			m.summary.Wpm, m.summary.Accuracy*100,
 		)
 	}
 
