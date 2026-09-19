@@ -58,6 +58,8 @@ Per-context sqlc for `progress` / `session`, repositories, services. Wire `GET /
 
 ### Phase 5 - Standalone TUI client
 
+> **Plan, 2026-09-19.** Sequenced into five slices in the [phase 5 plan](plans/phase-5-tui.md), each a session of its own: error-state rendering, the auth screen and token storage, `GET /sessions` plus its migration and the history screen, the progress heatmap, and engine tuning last - because it is the one piece that needs real session history, which the other four are what produce.
+
 Bubble Tea: API client layer (token storage in `$XDG_STATE_HOME`, bearer attach), the typing screen implementing **force-correction input and the per-item attribution rules** from the engine doc, a results screen, and the progress / keyboard heatmap.
 
 Plus the two items phase 4 deferred to their consumers, each landing with the screen that reads it: **`GET /sessions`** with the keyset cursor (Decision 5 of the [phase 4 plan](plans/phase-4-sessions.md) has the two queries and the cursor format already reasoned out) and the **`(user_id, completed_at DESC, id DESC)` migration** it needs. So this phase is `cmd/tui` plus that one endpoint, not `cmd/tui` alone.
