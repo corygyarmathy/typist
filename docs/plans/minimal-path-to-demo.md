@@ -122,7 +122,7 @@ Nothing here is cancelled. Each has a condition that makes it worth doing, so no
 
 | Deferred                                    | Pick it up when                                                                    |
 | ------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Concurrency test (phase 4 step 7)           | Immediately after the demo exists. The `psql` reproduction is already done, so this is an hour and it is interview gold. |
+| ~~Concurrency test (phase 4 step 7)~~ **Done 2026-09-19.** | Landed as `TestE2E_ConcurrentSubmissionsDoNotLoseUpdates` in `cmd/server/e2e_test.go`, after the hand-run `psql` reproduction and confirmed red by mutation. Phase 4 is closed. |
 | `GET /sessions` + its composite index       | The history screen exists to read it (phase 5 proper).                              |
 | Error-state _rendering_ (force-correction itself landed in chunk 2) | The typing _feel_ starts to matter - it is a genuine differentiator, not polish. The input model is done; what is left is showing the rejected keystroke. |
 | Caret wraps with the lesson text            | The typing screen gets any real layout work. `View` draws the caret as `strings.Repeat(" ", cursor) + "^"` on the line below the text, which lands under the wrong character once the terminal wraps the line. Correct placement needs the width from `tea.WindowSizeMsg`, which the model does not handle yet. Fifteen short words do not wrap at a normal terminal width, so this is invisible today. |

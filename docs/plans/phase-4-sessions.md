@@ -43,10 +43,14 @@ Concretely, phase 4 ships:
 
 - [x] `GET /api/v1/lessons/next` - loads competency, calls `engine.NextLesson`, returns words + targets. No writes. _(2026-08-22)_
 - [x] `GET /api/v1/progress` - already served; phase 4 finalised its schema in the spec.
-- [ ] `POST /api/v1/sessions` - the transactional write: `SELECT … FOR UPDATE` → `engine.ApplyResult` → server-derived WPM/accuracy → insert session + update competency → commit.
-- [ ] `internal/session`: models, `CreateSession` (+ sqlc), repository, service, handler.
-- [ ] `internal/progress`: `LoadForUpdate` / `Save` on a tx-bound store, plus the two queries.
-- [ ] Unit tests for the pure derivation, service tests against fakes, a **concurrency test** proving no lost update, and an **e2e submission** proving competency moves.
+- [x] `POST /api/v1/sessions` - the transactional write: `SELECT … FOR UPDATE` → `engine.ApplyResult` → server-derived WPM/accuracy → insert session + update competency → commit. _(2026-09-04)_
+- [x] `internal/session`: models, `CreateSession` (+ sqlc), repository, service, handler. _(2026-09-04)_
+- [x] `internal/progress`: `LoadForUpdate` / `Save` on a tx-bound store, plus the two queries. _(2026-09-04)_
+- [x] Unit tests for the pure derivation, service tests against fakes, a **concurrency test** proving no lost update, and an **e2e submission** proving competency moves. _(2026-09-19)_
+
+  The concurrency test is `TestE2E_ConcurrentSubmissionsDoNotLoseUpdates` in `cmd/server/e2e_test.go`, not `internal/session` as step 7 assumed. It cannot live in `internal/session`: those tests bind `CompetencyStore` to a fake so the package never imports `progress`, and a fake store takes no row lock. `cmd/server` is the only test package that goes through `newCompetencyStore` in `wiring.go`, where the interface meets the real `progress.Store`.
+
+  Run red by mutation on 2026-09-19 as the step required - `FOR UPDATE` removed from `GetUserProgressForUpdate`, regenerated, eight concurrent submissions recorded `samples = 20` instead of `80`. The session row count stayed at 8 throughout, because an `INSERT` takes no lock on `user_progress`; that is why counting rows is not a substitute for asserting the total.
 
 Moved to phase 5, each landing with the screen that consumes it:
 
