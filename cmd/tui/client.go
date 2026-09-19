@@ -66,7 +66,7 @@ func (c *Client) NextLesson(ctx context.Context) (openapi.Lesson, error) {
 func (c *Client) SubmitSession(ctx context.Context, sub openapi.SessionSubmission) (openapi.SessionSummary, error) {
 	jsonData, err := json.Marshal(sub)
 	if err != nil {
-		return openapi.SessionSummary{}, fmt.Errorf("failed to JSON marshal session submission: %w", err)
+		return openapi.SessionSummary{}, fmt.Errorf("JSON marshalling session submission: %w", err)
 	}
 	bodyReader := bytes.NewReader(jsonData)
 
