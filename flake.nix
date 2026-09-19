@@ -40,6 +40,7 @@
 
             # TUI dev tools
             asciinema
+            asciinema-agg # `agg`, renders a .cast to the README's demo gif
           ];
 
           shellHook = ''

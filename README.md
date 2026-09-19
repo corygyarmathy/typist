@@ -47,7 +47,17 @@ The client reads `TYPIST_API_URL` (default `http://localhost:8080`) and
 
 ## Demo
 
-<!-- TODO(phase-10): asciinema link or animated gif of the TUI -->
+![One lesson played end to end in the TUI](docs/demo.gif)
+
+One lesson, start to finish: the server generates it from the keys this user
+has unlocked, the client types it under force-correction, and the submission
+comes back as a server-derived `34 wpm, 96.2% accuracy`. The competency behind
+it moves in the same transaction.
+
+The recording is `docs/demo.cast`; `make demo-gif` re-renders the gif from it.
+This is the single-screen client described in
+[`docs/plans/minimal-path-to-demo.md`](docs/plans/minimal-path-to-demo.md) - no
+history, heatmap or login screen yet.
 
 ## What's interesting in here
 
