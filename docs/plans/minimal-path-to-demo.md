@@ -120,6 +120,8 @@ Four steps, each one runnable, so the loop is visible before it is complete.
 
 Nothing here is cancelled. Each has a condition that makes it worth doing, so none of it depends on remembering.
 
+> **Picked up 2026-09-19.** Six of the rows below are no longer waiting on a trigger - the demo exists, so their conditions are met. They are sequenced into slices in the [phase 5 plan](phase-5-tui.md): error-state rendering and the caret wrap are slice 1, `$XDG_STATE_HOME` token storage is slice 2, `GET /sessions` and its composite index are slice 3, the keyboard heatmap is slice 4, and engine tuning is slice 5 - last, because it is the one whose trigger the other four are what satisfies. The bottom row stays deferred, unchanged.
+
 | Deferred                                    | Pick it up when                                                                    |
 | ------------------------------------------- | ---------------------------------------------------------------------------------- |
 | ~~Concurrency test (phase 4 step 7)~~ **Done 2026-09-19.** | Landed as `TestE2E_ConcurrentSubmissionsDoNotLoseUpdates` in `cmd/server/e2e_test.go`, after the hand-run `psql` reproduction and confirmed red by mutation. Phase 4 is closed. |
