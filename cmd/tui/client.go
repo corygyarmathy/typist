@@ -3,6 +3,7 @@ package main
 // the API client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -60,6 +61,47 @@ func (c *Client) NextLesson(ctx context.Context) (openapi.Lesson, error) {
 	}
 
 	return lesson, nil
+}
+
+func (c *Client) SubmitSession(ctx context.Context, sub openapi.SessionSubmission) (openapi.SessionSummary, error) {
+	jsonData, err := json.Marshal(sub)
+	if err != nil {
+		return openapi.SessionSummary{}, fmt.Errorf("failed to JSON marshal session submission: %w", err)
+	}
+	bodyReader := bytes.NewReader(jsonData)
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.baseURL+"/api/v1/sessions",
+		bodyReader,
+	)
+	if err != nil {
+		return openapi.SessionSummary{}, fmt.Errorf("constructing get request: %w", err)
+	}
+
+	// set request headers
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := c.client.Do(req)
+	if err != nil {
+		return openapi.SessionSummary{}, fmt.Errorf("making get request: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode != http.StatusCreated {
+		return openapi.SessionSummary{}, errorFromResponse(res)
+	}
+
+	var summary openapi.SessionSummary
+	decoder := json.NewDecoder(res.Body)
+	err = decoder.Decode(&summary)
+	if err != nil {
+		return openapi.SessionSummary{}, fmt.Errorf("decoding session summary JSON: %w", err)
+	}
+
+	return summary, nil
 }
 
 func errorFromResponse(res *http.Response) error {
