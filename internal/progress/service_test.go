@@ -29,7 +29,12 @@ func (f *fakeRepo) GetUserProgress(ctx context.Context, userID uuid.UUID) ([]byt
 	return f.cs, f.err
 }
 
-// Not fakeable, covered by the concurrency test instead.
+// The row lock this method's query takes cannot be faked - a fake holds no
+// row and blocks nobody - so what it is for is pinned where it can be
+// observed for real: TestE2E_ConcurrentSubmissionsDoNotLoseUpdates in
+// cmd/server. That test has to live there rather than here, because the only
+// place this repository meets session.Submit's transaction is the wiring in
+// cmd/server.
 func (f *fakeRepo) GetUserProgressForUpdate(
 	ctx context.Context,
 	userID uuid.UUID,
@@ -37,7 +42,9 @@ func (f *fakeRepo) GetUserProgressForUpdate(
 	return f.cs, f.err
 }
 
-// Not fakeable, covered by the concurrency test instead.
+// Likewise: what matters about this write is that it lands on a document no
+// concurrent submission has already superseded, which only the concurrency
+// test named above can show.
 func (f *fakeRepo) UpdateUserProgress(
 	ctx context.Context,
 	userID uuid.UUID,

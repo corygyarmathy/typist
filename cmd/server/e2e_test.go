@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -527,5 +528,183 @@ func TestE2E_SubmitSessionMovesCompetency(t *testing.T) {
 	if after.TargetWPM != got.TargetWPM {
 		t.Errorf("progress after: target_wpm = %d, want %d unchanged",
 			after.TargetWPM, got.TargetWPM)
+	}
+}
+
+// TestE2E_ConcurrentSubmissionsDoNotLoseUpdates pins the lost update that
+// SELECT … FOR UPDATE exists to prevent.
+//
+// Without the row lock, two submissions racing for one user both read the same
+// competency document, both compute a new document from that copy, and the
+// second write silently discards the first - the row ends up recording one
+// submission's worth of practice for two submissions of work. That is not a
+// hypothetical: it was reproduced by hand in two psql sessions before this test
+// was written (docs/plans/phase-4-sessions.md, step 7), and this is that
+// reproduction turned into something CI can run.
+//
+// It lives here, in the package that owns the composition root, rather than in
+// internal/session - which is where the rest of Submit's transaction is tested.
+// It has to. internal/session must never import internal/progress, so its tests
+// bind CompetencyStore to a fake (see the header comment on
+// service_integration_test.go), and a fake store takes no row lock. The only
+// place session.CompetencyStore meets the real progress.Store is
+// newCompetencyStore in wiring.go, and this is the only test package that goes
+// through it.
+//
+// Confirm it red by mutation before trusting it: delete FOR UPDATE from
+// GetUserProgressForUpdate in internal/progress/queries.sql, regenerate with
+// sqlc, and re-run. Samples should land well under the expected total. A test
+// that has never failed is a claim nobody has checked.
+func TestE2E_ConcurrentSubmissionsDoNotLoseUpdates(t *testing.T) {
+	const (
+		// submissions is how many requests race. It only has to be greater
+		// than one to expose the bug; eight makes an unlocked run lose enough
+		// that the failure is unambiguous rather than a one-sample flake.
+		submissions = 8
+
+		// One key, ten attempts, no errors. The key is "e" because it is one
+		// of the four seeded unlocked keys (see TestE2E_RegisterLoginProgressLesson):
+		// engine.ApplyResult discards observations for keys the user has not
+		// unlocked, so a locked key would move nothing and this test would
+		// pass against a document that never changed. There is no need to
+		// fetch a lesson first - a single known key is what the assertion
+		// wants, and it keeps every request's body byte-identical.
+		attemptsEach = 10
+		millisEach   = 2000
+
+		// updateScore's contract is prev.Samples + o.Attempts, and "e" starts
+		// at zero samples, so the expected total is exact arithmetic rather
+		// than a threshold. That exactness is the whole assertion: a lost
+		// update still leaves samples having *increased*, so "it went up" is
+		// green in both the broken and the fixed case.
+		wantSamples = submissions * attemptsEach
+	)
+
+	pool, _, authn, do := setupE2ETest(t)
+
+	// The test proves nothing if the goroutines queue on the pool instead of
+	// on the row lock: they would serialise for the wrong reason, and the
+	// assertion below would stay green with FOR UPDATE deleted. Each
+	// submission holds one connection for the length of its transaction, so
+	// the pool must be able to hand out at least one per racing request.
+	//
+	// This asserts the requirement rather than opening a private pool, so that
+	// the test still exercises database.Open's real configuration - and if
+	// that configuration is ever shrunk below what this test needs, the
+	// failure says so instead of quietly becoming a no-op.
+	if maxConns := pool.Config().MaxConns; maxConns < submissions {
+		t.Fatalf("pool MaxConns = %d, need >= %d: with fewer connections than "+
+			"concurrent submissions the goroutines serialise on the pool rather "+
+			"than on the row lock, and this test stops testing anything",
+			maxConns, submissions)
+	}
+
+	loginToken := userRegisterLogin(t, pool, do)
+
+	userID, err := authn.Validate(loginToken.Token)
+	if err != nil {
+		t.Fatalf("validating the login token to recover the user ID: %v", err)
+	}
+
+	// Built from the generated request type for the same reason the other e2e
+	// submission is: a change to the spec's SessionSubmission breaks this at
+	// compile time rather than at run time. Ngrams is an empty map rather than
+	// omitted because the schema requires the member and a nil map marshals as
+	// null.
+	submission := openapi.SessionSubmission{
+		Keys: map[string]openapi.Observation{
+			"e": {Attempts: attemptsEach, Errors: 0, TotalMillis: millisEach},
+		},
+		Ngrams: map[string]openapi.Observation{},
+	}
+	body, err := json.Marshal(submission)
+	if err != nil {
+		t.Fatalf("marshalling submission: %v", err)
+	}
+
+	// Each goroutine writes only its own index, so the slices need no mutex;
+	// wg.Wait is the happens-before edge that makes every write visible here.
+	//
+	// t.Fatalf must not be called off the test goroutine, so failures are
+	// recorded and reported below rather than raised in place.
+	codes := make([]int, submissions)
+	bodies := make([]string, submissions)
+
+	// The WaitGroup waits for the requests to finish; it cannot make them
+	// start together, because a goroutine may be scheduled and complete before
+	// its siblings are even spawned. Closing a channel releases all of them at
+	// once, which is what maximises the overlap the race needs.
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+
+	for i := range submissions {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			rec := do(http.MethodPost, "/api/v1/sessions", string(body), loginToken.Token)
+			codes[i] = rec.Code
+			bodies[i] = rec.Body.String()
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	for i, code := range codes {
+		if code != http.StatusCreated {
+			t.Errorf("submission %d: status = %d, want %d (body: %s)",
+				i, code, http.StatusCreated, bodies[i])
+		}
+	}
+	if t.Failed() {
+		// A submission that never reached the database cannot have lost an
+		// update, so the totals below would be measuring the wrong failure.
+		t.Fatal("not every submission was accepted; the totals below would be misleading")
+	}
+
+	// The competency read back through the API, which is what makes this an
+	// assertion about committed state rather than about what the handlers
+	// returned.
+	rec := do(http.MethodGet, "/api/v1/progress", "", loginToken.Token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("progress after: status = %d, want %v (body: %s)",
+			rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var after struct {
+		Keys map[string]struct {
+			Score   float64 `json:"score"`
+			Samples int     `json:"samples"`
+		} `json:"keys"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&after); err != nil {
+		t.Fatalf("progress after: decode response: %v", err)
+	}
+
+	item, ok := after.Keys["e"]
+	if !ok {
+		t.Fatalf("progress after: key \"e\" is missing; keys are %v",
+			slices.Sorted(maps.Keys(after.Keys)))
+	}
+	if item.Samples != wantSamples {
+		t.Errorf("progress after: key \"e\" samples = %d, want %d. "+
+			"%d concurrent submissions of %d attempts each were accepted, so a "+
+			"lower total means a submission read a competency document that a "+
+			"committed sibling had already superseded - the lost update",
+			item.Samples, wantSamples, submissions, attemptsEach)
+	}
+
+	// The session rows are counted separately because they are written by a
+	// different statement in the same transaction, and an INSERT takes no row
+	// lock on user_progress. All eight can therefore land while competency
+	// loses updates - which is exactly the state the bug produces, and why
+	// counting rows is not a substitute for the assertion above.
+	var sessionRows int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM sessions WHERE user_id = $1`, userID).Scan(&sessionRows); err != nil {
+		t.Fatalf("counting sessions for %s: %v", userID, err)
+	}
+	if sessionRows != submissions {
+		t.Errorf("sessions rows = %d, want %d", sessionRows, submissions)
 	}
 }
