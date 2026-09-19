@@ -125,6 +125,7 @@ Nothing here is cancelled. Each has a condition that makes it worth doing, so no
 | Concurrency test (phase 4 step 7)           | Immediately after the demo exists. The `psql` reproduction is already done, so this is an hour and it is interview gold. |
 | `GET /sessions` + its composite index       | The history screen exists to read it (phase 5 proper).                              |
 | Error-state _rendering_ (force-correction itself landed in chunk 2) | The typing _feel_ starts to matter - it is a genuine differentiator, not polish. The input model is done; what is left is showing the rejected keystroke. |
+| Caret wraps with the lesson text            | The typing screen gets any real layout work. `View` draws the caret as `strings.Repeat(" ", cursor) + "^"` on the line below the text, which lands under the wrong character once the terminal wraps the line. Correct placement needs the width from `tea.WindowSizeMsg`, which the model does not handle yet. Fifteen short words do not wrap at a normal terminal width, so this is invisible today. |
 | Keyboard heatmap                            | After the loop is playable; it is the best screenshot in the project, so do not skip it, just do not block on it. |
 | `$XDG_STATE_HOME` token storage             | You run the client on a second machine, or the env var becomes annoying.            |
 | Engine tuning (`targetRaiseScore`, `allMastered`) | You have your own real session history to tune against - which chunk 2 is what produces. |
