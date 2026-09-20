@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ type model struct {
 	lesson  openapi.Lesson
 	summary *openapi.SessionSummary
 	acc     *accumulator
+	width   int
 	err     error
 }
 
@@ -84,6 +86,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+
 	case lessonMsg:
 		m.state = stateTyping
 		m.lesson = openapi.Lesson(msg)
@@ -111,22 +116,37 @@ func (m model) View() tea.View {
 	}
 
 	var s string
+	var cursor *tea.Cursor
+
 	switch m.state {
 	case stateLoading:
 		// m.acc is nil until lessonMsg arrives, so nothing below may run yet.
 		s = "Loading lesson...\n"
 
 	case stateTyping:
-		// The intended text on one line, a caret beneath the character due
-		// next. Slicing at m.acc.cursor is valid at every value including
-		// len(text); indexing a single character at len(text) would panic,
-		// so the caret line avoids indexing the text at all.
-		s = string(m.acc.text) + "\n"
-		s += strings.Repeat(" ", m.acc.cursor) + "^\n\n"
+		header := "\n"
+		s = header
+		starts := lineStarts(m.acc.text, m.width)
+		for k, start := range starts {
+			end := len(m.acc.text) // the last line runs to the end of the text
+			if k+1 < len(starts) { // every other line ends where the next begins
+				end = starts[k+1]
+			}
+			s += string(m.acc.text[start:end]) + "\n"
+		}
+
 		s += fmt.Sprintf(
 			"%d/%d chars, %d errors\n",
 			m.acc.cursor, len(m.acc.text), m.acc.Errors(),
 		)
+
+		// The index of the last start at or before the cursor - the wrapped
+		// line the cursor sits on. tea.Cursor.Position is relative to the
+		// frame, not the text, so the rows rendered above the text shift it
+		// down; deriving that from the header keeps the two in step.
+		lineNum := sort.SearchInts(starts, m.acc.cursor+1) - 1
+		y := strings.Count(header, "\n") + lineNum
+		cursor = tea.NewCursor(m.acc.cursor-starts[lineNum], y)
 
 	case stateDone:
 		s = string(m.acc.text) + "\n\n"
@@ -143,5 +163,52 @@ func (m model) View() tea.View {
 	s += "\nPress ctrl+c to quit.\n"
 
 	// Send the UI for rendering
-	return tea.NewView(s)
+	view := tea.NewView(s)
+	view.Cursor = cursor
+	return view
+}
+
+// lineStarts returns the rune index at which each wrapped line of text begins,
+// greedily breaking after the last space that fits in a line of width cells.
+// Line k is text[starts[k]:starts[k+1]], and the last line runs to the end of
+// text, so the lines partition the input: no rune is dropped or repeated. That
+// is what makes a caret position derived from a start trustworthy. The result
+// always holds at least one element, 0, so callers never check for empty.
+//
+// Breaking after the space keeps it on the line it terminates, because it is a
+// character the typist still has to press and so needs a cell of its own. A
+// word longer than width is broken at width rather than overflowing.
+//
+// One rune is treated as one terminal cell. The corpus is ASCII
+// (internal/corpus/data/corpus.json), so no grapheme or width handling is
+// needed here; text outside that range would need it.
+func lineStarts(text []rune, width int) []int {
+	// Also the loop's termination guarantee: with width >= 1, the space branch
+	// advances by at least 1 and the break-inside-a-word branch by width.
+	if width <= 0 {
+		return []int{0}
+	}
+
+	starts := []int{0}
+
+	for i := 0; i < len(text)-width; {
+		window := text[i : i+width]
+		lastSpace := -1
+		for j, r := range window {
+			if r == ' ' {
+				lastSpace = j
+			}
+		}
+		if lastSpace < 0 {
+			// word longer than width, break at width
+			i = i + width
+			starts = append(starts, i)
+		} else {
+			// break after last space
+			i = i + lastSpace + 1
+			starts = append(starts, i)
+		}
+	}
+
+	return starts
 }
