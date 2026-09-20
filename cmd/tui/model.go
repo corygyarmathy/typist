@@ -137,15 +137,8 @@ func (m model) View() tea.View {
 
 	case stateTyping:
 		header := "\n"
-		s = header
-		starts := lineStarts(m.acc.text, m.width)
-		for k, start := range starts {
-			end := len(m.acc.text) // the last line runs to the end of the text
-			if k+1 < len(starts) { // every other line ends where the next begins
-				end = starts[k+1]
-			}
-			s += m.renderLine(m.acc.text[start:end], start) + "\n"
-		}
+		text, starts := m.renderText()
+		s = header + text
 
 		s += fmt.Sprintf("%d/%d chars, %d errors", m.acc.cursor, len(m.acc.text), m.acc.Errors())
 		if m.rejected != 0 {
@@ -162,7 +155,8 @@ func (m model) View() tea.View {
 		cursor = tea.NewCursor(m.acc.cursor-starts[lineNum], y)
 
 	case stateDone:
-		s = m.renderLine(m.acc.text, 0) + "\n\n"
+		text, _ := m.renderText()
+		s = text + "\n"
 		if m.summary == nil {
 			s += "Submitting...\n"
 			break
@@ -224,6 +218,26 @@ func lineStarts(text []rune, width int) []int {
 	}
 
 	return starts
+}
+
+// renderText wraps the lesson text to the current width and styles every
+// position in it, one trailing newline per line. The line starts come back
+// with it because the caret has to be placed from the same starts the text was
+// drawn from; recomputing them separately is how the two drift apart.
+func (m model) renderText() (string, []int) {
+	starts := lineStarts(m.acc.text, m.width)
+
+	var b strings.Builder
+	for k, start := range starts {
+		end := len(m.acc.text) // the last line runs to the end of the text
+		if k+1 < len(starts) { // every other line ends where the next begins
+			end = starts[k+1]
+		}
+		b.WriteString(m.renderLine(m.acc.text[start:end], start))
+		b.WriteString("\n")
+	}
+
+	return b.String(), starts
 }
 
 // renderLine styles one wrapped line. offset is the line's rune index into
