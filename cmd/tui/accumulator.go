@@ -28,15 +28,19 @@ func newAccumulator(words []string, now time.Time) *accumulator {
 	}
 }
 
-func (a *accumulator) Press(r rune, now time.Time) {
+// Press records the keystroke at the cursor and reports whether it was
+// correct. The caller needs that answer to show the rejection; returning it
+// keeps the one definition of correct here, in the struct that builds the
+// submission, rather than duplicating the comparison in the display layer.
+func (a *accumulator) Press(r rune, now time.Time) bool {
 	if a.Done() {
-		return
+		return false
 	}
 
 	// incorrect press
 	if r != a.text[a.cursor] {
 		a.positions[a.cursor].firstTryError = true
-		return
+		return false
 	}
 
 	// correct press
@@ -45,6 +49,8 @@ func (a *accumulator) Press(r rune, now time.Time) {
 
 	a.lastCorrect = now
 	a.cursor++
+
+	return true
 }
 
 func (a *accumulator) Done() bool {

@@ -71,3 +71,33 @@ func TestAccumulator(t *testing.T) {
 		t.Logf("submitted ngrams: %v", sub.Ngrams)
 	}
 }
+
+// Press's bool is what the display layer reads to show a rejection, so the
+// contract is asserted directly: it reports correctness, and a wrong key
+// leaves the cursor where it was for the typist to try again.
+func TestPressReportsWhetherTheKeyWasCorrect(t *testing.T) {
+	a := newAccumulator([]string{"eat"}, testNow)
+
+	if a.Press('z', testNow) {
+		t.Error("Press('z') = true at a position expecting 'e', want false")
+	}
+	if a.cursor != 0 {
+		t.Errorf("cursor = %d after a wrong key, want 0 - a rejected press must not advance", a.cursor)
+	}
+
+	if !a.Press('e', testNow) {
+		t.Error("Press('e') = false at a position expecting 'e', want true")
+	}
+	if a.cursor != 1 {
+		t.Errorf("cursor = %d after a correct key, want 1", a.cursor)
+	}
+
+	// Past the end of the text there is no correct key, so every press is
+	// refused - the same answer the display layer would show as a rejection.
+	for !a.Done() {
+		a.Press(a.text[a.cursor], testNow)
+	}
+	if a.Press('t', testNow) {
+		t.Error("Press('t') = true after the text is complete, want false")
+	}
+}
