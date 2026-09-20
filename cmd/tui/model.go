@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	lipgloss "charm.land/lipgloss/v2"
 	"github.com/corygyarmathy/typist/internal/openapi"
 )
 
@@ -19,19 +20,27 @@ const (
 	stateDone
 )
 
+var (
+	typedStyle     = lipgloss.NewStyle().Faint(true)
+	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Underline(true)
+	remainderStyle = lipgloss.NewStyle()
+	rejectStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Reverse(true)
+)
+
 type lessonMsg openapi.Lesson
 type summaryMsg openapi.SessionSummary
 type errMsg error
 
 type model struct {
-	state   state
-	client  *Client
-	ctx     context.Context // stored here b/c tea.Cmd() can't take it
-	lesson  openapi.Lesson
-	summary *openapi.SessionSummary
-	acc     *accumulator
-	width   int
-	err     error
+	state    state
+	client   *Client
+	ctx      context.Context // stored here b/c tea.Cmd() can't take it
+	lesson   openapi.Lesson
+	summary  *openapi.SessionSummary
+	acc      *accumulator
+	width    int
+	rejected rune
+	err      error
 }
 
 func initialModel(ctx context.Context, client *Client) model {
@@ -72,7 +81,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Text == "" {
 				break
 			}
-			m.acc.Press(msg.Code, time.Now())
+			m.rejected = 0
+			if !m.acc.Press(msg.Code, time.Now()) {
+				m.rejected = msg.Code
+			}
 			if m.acc.Done() {
 				m.state = stateDone
 				sub := m.acc.Submission()
@@ -132,13 +144,14 @@ func (m model) View() tea.View {
 			if k+1 < len(starts) { // every other line ends where the next begins
 				end = starts[k+1]
 			}
-			s += string(m.acc.text[start:end]) + "\n"
+			s += m.renderLine(m.acc.text[start:end], start) + "\n"
 		}
 
-		s += fmt.Sprintf(
-			"%d/%d chars, %d errors\n",
-			m.acc.cursor, len(m.acc.text), m.acc.Errors(),
-		)
+		s += fmt.Sprintf("%d/%d chars, %d errors", m.acc.cursor, len(m.acc.text), m.acc.Errors())
+		if m.rejected != 0 {
+			s += "  " + rejectStyle.Render(fmt.Sprintf("wrong key: %q", m.rejected))
+		}
+		s += "\n"
 
 		// The index of the last start at or before the cursor - the wrapped
 		// line the cursor sits on. tea.Cursor.Position is relative to the
@@ -149,7 +162,7 @@ func (m model) View() tea.View {
 		cursor = tea.NewCursor(m.acc.cursor-starts[lineNum], y)
 
 	case stateDone:
-		s = string(m.acc.text) + "\n\n"
+		s = m.renderLine(m.acc.text, 0) + "\n\n"
 		if m.summary == nil {
 			s += "Submitting...\n"
 			break
@@ -211,4 +224,32 @@ func lineStarts(text []rune, width int) []int {
 	}
 
 	return starts
+}
+
+// renderLine styles one wrapped line. offset is the line's rune index into
+// m.acc.text, so the position of line[i] is offset+i.
+func (m model) renderLine(line []rune, offset int) string {
+	var b strings.Builder
+	for i, r := range line {
+		b.WriteString(m.styleFor(offset + i).Render(string(r)))
+	}
+	return b.String()
+}
+
+// styleFor returns the style for the position at index i in m.acc.text. The
+// case order is the precedence. A rejection is transient - the next keypress
+// replaces or clears it - so it outranks the permanent mark. firstTryError is
+// the record the submission is built from, so it stays visible after the
+// position is typed correctly, and outranks the typed/untyped split.
+func (m model) styleFor(i int) lipgloss.Style {
+	switch {
+	case m.rejected != 0 && i == m.acc.cursor:
+		return rejectStyle
+	case m.acc.positions[i].firstTryError:
+		return errorStyle
+	case i < m.acc.cursor:
+		return typedStyle
+	default:
+		return remainderStyle
+	}
 }
