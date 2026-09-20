@@ -191,10 +191,11 @@ struct with no other shared state and makes the concurrency read as harder than
 it is), and a per-call `token` parameter (no shared state at all, but threads the
 token through every call site and moves the token into the model).
 
-### Open: which slice performs the split
+### Settled: slice 2 performs the split
 
-The decision above is _that_ it splits, not _when_. Two candidate points, and
-this one is cheap enough to settle in front of the code:
+**Head of slice 2, as its first commit.** Settled 2026-09-20, at the head of
+slice 1. The decision above is _that_ it splits, not _when_. Two candidate
+points, and this one was cheap enough to settle in front of the code:
 
 - **Head of slice 1.** Honours "split first" literally. But slice 1 touches only
   the typing flow, so the split separates `loading` / `typing` / `done` from each
@@ -204,6 +205,80 @@ this one is cheap enough to settle in front of the code:
   independent screen, so the split is separating things that genuinely differ,
   and slice 1 stays a small focused diff. This is a pre-committed point, not
   "split when it hurts" - the distinction being that the trigger is named now.
+
+The second won. Slice 1 therefore keeps the single `model` with its `state`
+field and owns `width` directly; slice 2's root inherits that field as the last
+known window size it passes to every screen it constructs.
+
+## Slice 1 decisions, 2026-09-20
+
+Settled in front of the code, as the rule above intends. Recorded here rather
+than in an ADR because none is an architectural choice ([AGENTS.md](../../AGENTS.md#decision-capture):
+records scale to the size of the decision). Two of them - the first and the
+second - reach past slice 1, which is why they are written down at all.
+
+### `Press` reports rejection; the model holds the rejected key
+
+`accumulator.Press` returns a `bool`, and `model` stores the rejected rune.
+Two alternatives were rejected. A `rejected rune` field on `accumulator` puts
+display state in the struct whose job is building the `openapi.SessionSubmission`.
+Comparing the key against `acc.text[acc.cursor]` in `Update` gives two places
+that define what "correct" means and must agree forever. Returning a `bool`
+leaves one definition of correct in `Press` while display state stays in the
+display layer - which matters precisely because the model splits per screen in
+slice 2.
+
+The rejection is cleared by the next keypress, whatever it is: a second wrong
+key replaces it, a correct key clears it. A timeout might read better, at the
+cost of a `tea.Tick` and a message type; revisit only if the rule proves wrong
+in use.
+
+### `charmbracelet/lipgloss/v2` for styling
+
+bubbletea v2 takes styling as ANSI escapes embedded in `tea.View.Content`, so
+something has to produce them. Raw escapes need no dependency but emit colour
+into terminals that do not want it; `charmbracelet/ultraviolet` is already an
+indirect dependency but is bubbletea's internal rendering layer, not a styling
+API.
+
+lipgloss is the styling companion to a framework already chosen, from the same
+module family, and its transitive dependencies (`colorprofile`, `x/ansi`,
+`go-colorful`, `x/term`) are already indirect entries in `go.mod` via bubbletea -
+so the added closure is essentially lipgloss itself. That is the justification
+AGENTS.md's _standard library first_ asks for; it is not ADR-sized.
+
+Constraint on the rendering: **do not distinguish by colour alone.** The
+first-try-error positions carry a non-colour attribute (underline or reverse)
+as well, so the distinction survives a monochrome terminal and a colour-blind
+reader.
+
+### The caret is the terminal cursor, not a drawn row
+
+`tea.View.Cursor` is set to `tea.NewCursor(x, y)` and the `^` row is gone. The
+caret sits _on_ the next character rather than under it, blink and shape come
+from the terminal, and the position is assertable in a test without parsing
+rendered text. It removed code rather than adding it.
+
+The cost is one thing to keep straight: `tea.Cursor.Position` is relative to the
+top-left of the **frame**, not of the text block, so anything rendered above the
+text shifts the caret down. `View` derives that offset from the header it just
+rendered rather than writing a literal, so the two cannot drift apart.
+
+### Wrapping is greedy word wrap, expressed as line-start indices
+
+`lineStarts(text []rune, width int) []int` returns the rune index at which each
+wrapped line begins. Indices rather than `[]string` because the caret needs the
+arithmetic anyway - row is the last start at or before the cursor, column is the
+difference - and slicing between consecutive starts partitions the text, so no
+rune is dropped.
+
+Hard wrapping at `width` was rejected: splitting a word mid-word reads wrong in
+a typing test. Two consequences accepted knowingly: searching a window of
+`width` (not `width + 1`) keeps the line-terminating space inside the line's
+budget at the cost of breaking one word early where a line would have fitted
+exactly, and `width <= 0` - true for the frame before the first
+`tea.WindowSizeMsg` arrives - returns a single unwrapped line rather than
+falling back to a magic 80. The guard is also the loop's termination proof.
 
 ## Carried-over review note
 
