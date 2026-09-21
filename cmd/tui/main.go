@@ -33,7 +33,7 @@ func run() error {
 
 	client := NewClient(baseURL, token)
 
-	p := tea.NewProgram(initialModel(ctx, client))
+	p := tea.NewProgram(newRoot(ctx, client))
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("running tea app: %w", err)
 	}
