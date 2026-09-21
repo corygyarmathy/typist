@@ -280,6 +280,148 @@ exactly, and `width <= 0` - true for the frame before the first
 `tea.WindowSizeMsg` arrives - returns a single unwrapped line rather than
 falling back to a magic 80. The guard is also the loop's termination proof.
 
+## Slice 2 decisions, 2026-09-21
+
+Settled before session A's first line rather than in front of the code, because
+every one of them reaches across more than one of the four sessions below and
+retrofitting any of them mid-slice is the expensive outcome. None is an
+architectural choice, so none gets an ADR ([AGENTS.md](../../AGENTS.md#decision-capture)).
+
+### Five screens: loading, typing, results, login, register
+
+`stateLoading` / `stateTyping` / `stateDone` each become a `tea.Model`, and the
+auth work adds two more rather than one.
+
+Loading is a screen even though it handles no input, because the alternative -
+a `loading bool` inside the typing screen - gives the typing screen a second
+mode in the same breath as the `state` field is deleted for having modes. It
+also owns the `NextLesson` command, which is the thing that ends the loading
+state, so command and state stay together.
+
+Login and register are separate screens rather than one screen with a mode
+toggle. The two collect the same two fields, so a toggle is tempting; what
+differs is the meaning of a 409 and of a password typo, and a screen that has
+to branch on its own mode to say what went wrong is the `state` field again at
+a smaller scale. Attempting a login and falling back to register on a 401 was
+rejected outright: it silently creates an account from a mistyped email.
+
+### The root stores a local `screen` interface, not `tea.Model`
+
+`tea.Model.Update` returns `tea.Model`, so a root field of that type forces a
+type assertion on every single update - the exact cost the transitions-by-
+message mechanic was chosen to avoid.
+
+A local interface whose `Update` returns `screen` removes it. Nothing is
+invented: the interface is `tea.Model`'s three methods with one return type
+narrowed, so it is still the framework's shape rather than a design of our own.
+
+### The token file is JSON: the token and an absolute expiry
+
+`openapi.TokenResponse` carries `expires_in` in seconds, which is meaningless
+once written to disk - it is relative to a moment the next process does not
+know. Storing the raw JWT alone would therefore throw away the only expiry
+information available at the point it is still interpretable, and the client
+would learn about expiry by sending a request that is already doomed.
+
+So the file holds the token plus the absolute time that `expires_in` resolves
+to at the moment of the response, and startup can route to the login screen
+without a round trip. The JWT's own `exp` claim is the server's authority and
+this cache does not override it; a token this file believes is live can still
+come back 401, which is what the typed error below exists to handle.
+
+Mode `0600`, because the file is a bearer credential.
+
+### The token store lives in `cmd/tui`, package `main`
+
+Nothing outside the client reads a token off disk - the server issues tokens and
+verifies them, and never loads one. A package under `internal/` for a single
+consumer is the extraction AGENTS.md's _second or third real occurrence_ rule
+exists to prevent, and the existing `cmd/tui` tests are already in package
+`main`, so the store loses no testability by staying beside its only caller.
+
+### `charmbracelet/bubbles/v2` for the text inputs
+
+Two fields with masking, backspace, and a cursor is roughly forty lines
+hand-rolled, so this is not a capability we cannot write. It is bought for the
+edge cases a hand-rolled field gets wrong quietly: paste, word-delete,
+navigation within the value, and the cursor reporting that slice 1 just settled
+for the typing screen.
+
+The honest cost, and it is larger than lipgloss's was: bubbles pulls seven
+modules `go.mod` does not already carry - `MakeNowJust/heredoc`,
+`atotto/clipboard`, `aymanbagabas/go-udiff`, `charmbracelet/harmonica`,
+`x/exp/golden`, `dustin/go-humanize`, `sahilm/fuzzy` - because the module ships
+every component together and only `textinput` is wanted. They are build-graph
+entries rather than linked code, but they are entries all the same, and this
+slice is the point at which that trade was accepted knowingly.
+
+### The client returns a typed error carrying the status code
+
+`errorFromResponse` flattens every status into a `fmt.Errorf` string today, so
+the root cannot tell a 401 from a 500 without matching on text. Slice 2's
+last session needs exactly that distinction.
+
+A typed error carrying the status code rather than a bare `ErrUnauthorized`
+sentinel, because the next two slices want the same discrimination for other
+codes - slice 3's `400` on a forged cursor is already named in this plan - and a
+second sentinel would be the first sign the shape was wrong. `errors.As`
+recovers the code; the message stays as it reads today.
+
+This is also where the carried-over review note below is repaid: `deref` is
+fixed in the same session, since a `problem+json` body without a `detail` is
+most likely on precisely the auth failures being added.
+
+## Slice 2 implementation structure
+
+Four sessions, one branch, one PR, in order. Each is sized to survive two or
+three rounds of review without the next session's work being blocked behind
+those rounds.
+
+### Session A - the split, and nothing else
+
+The settled split, as the slice's first commit. `cmd/tui/model.go` becomes a
+root model plus the loading, typing, and results screens; the root owns `ctx`,
+the `*Client`, and the last known window size it passes to every screen it
+constructs. `cmd/tui/model_test.go` is redistributed, not extended.
+
+No new behaviour. A review round on a file that only moved is fast; a review
+round on a file that moved and changed is not, and that is the entire reason
+this is a session of its own.
+
+**Done when:** `make test` passes and the loop plays exactly as it did before
+the commit.
+
+### Session B - client and storage, no TUI
+
+`Client.Register` and `Client.Login` against `POST /api/v1/auth/register` and
+`POST /api/v1/auth/login`; the typed status error; the `deref` fix; the token
+store. Every line is reachable from `httptest` and `t.TempDir()`, with no `tea`
+involvement, so a long review here blocks nothing.
+
+**Done when:** a test registers against a fake server, writes the token, reads
+it back from a fresh store, and a `problem+json` body with no `detail` produces
+an error instead of a panic.
+
+### Session C - the auth screens and the startup path
+
+The login and register screens, and the root wiring: a live token on disk goes
+straight to loading, no token or an expired one goes to login, and the
+`loggedInMsg` both writes the file and swaps in the new `*Client`.
+
+**Done when:** a fresh checkout with no environment variables set can register,
+play a lesson, quit, and restart straight into typing - the slice's own done
+condition, minus the 401 path.
+
+### Session D - the 401 return path and the README
+
+A 401 mid-session returns to the login screen rather than an error string, and
+`README.md` loses the `curl`-into-`TYPIST_TOKEN` step at line 32 along with the
+note that the token does not persist.
+
+**Done when:** an expired token mid-session lands the user on the login screen
+and the lesson resumes after re-authenticating, and the README's quickstart no
+longer mentions `TYPIST_TOKEN`.
+
 ## Carried-over review note
 
 `cmd/tui/client.go`'s `deref` dereferences unconditionally, but
