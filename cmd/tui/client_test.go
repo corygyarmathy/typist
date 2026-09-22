@@ -338,3 +338,214 @@ func TestClientSubmitSession(t *testing.T) {
 		})
 	}
 }
+
+func TestClientAuth(t *testing.T) {
+	const (
+		testEmail    = "reader@example.com"
+		testPassword = "correct-horse-battery"
+	)
+
+	// Register and Login differ only in path and request type, and share
+	// authBody, so one table covers both. The call field is what selects
+	// which method runs - a bool would not survive a third auth endpoint.
+	tests := []struct {
+		name string
+		call string // "register" or "login"
+
+		// What the fake server sends back.
+		status int
+		ctype  string
+		body   string
+
+		// What the method is expected to produce.
+		wantPath  string
+		wantToken string
+		wantErr   bool
+		// Substrings the error must contain.
+		wantErrHas []string
+		// Status the recovered *statusError must carry. 0 means don't check.
+		wantStatus int
+	}{
+		{
+			name: "register 200 decodes the token",
+			call: "register",
+			// The spec says both auth endpoints answer 200 - register
+			// included, unlike POST /sessions which answers 201. See
+			// api/openapi.yaml's registerUser responses.
+			status: http.StatusOK,
+			ctype:  "application/json",
+			// A raw literal, not json.Marshal(openapi.TokenResponse{...}):
+			// encoding the struct and decoding it back would pass even with
+			// wrong json tags, because the same wrong tags cancel out.
+			body:      `{"token":"jwt-abc","token_type":"Bearer","expires_in":3600}`,
+			wantPath:  "/api/v1/auth/register",
+			wantToken: "jwt-abc",
+		},
+		{
+			name:      "login 200 decodes the token",
+			call:      "login",
+			status:    http.StatusOK,
+			ctype:     "application/json",
+			body:      `{"token":"jwt-def","token_type":"Bearer","expires_in":3600}`,
+			wantPath:  "/api/v1/auth/login",
+			wantToken: "jwt-def",
+		},
+		{
+			name: "register 201 is not success",
+			call: "register",
+			// POST /sessions answers 201, these answer 200. A client that
+			// carried that assumption across, or accepted any 2xx, would
+			// decode an empty TokenResponse and store an empty token.
+			status:     http.StatusCreated,
+			ctype:      "application/json",
+			body:       `{"token":"jwt-abc","token_type":"Bearer","expires_in":3600}`,
+			wantPath:   "/api/v1/auth/register",
+			wantErr:    true,
+			wantErrHas: []string{"201"},
+			wantStatus: 201,
+		},
+		{
+			name:   "register 409 is the address already existing",
+			call:   "register",
+			status: http.StatusConflict,
+			ctype:  "application/problem+json; charset=utf-8",
+			body: `{"type":"about:blank","title":"Conflict","status":409,` +
+				`"detail":"email already registered","instance":"req-ghi789"}`,
+			wantPath:   "/api/v1/auth/register",
+			wantErr:    true,
+			wantErrHas: []string{"email already registered"},
+			// The code the register screen branches on. 409 and 401 mean
+			// different things to a user, which is the whole reason login
+			// and register are separate screens.
+			wantStatus: 409,
+		},
+		{
+			name:   "login 401 is the wrong password",
+			call:   "login",
+			status: http.StatusUnauthorized,
+			ctype:  "application/problem+json; charset=utf-8",
+			// No detail: the server has no safe specific thing to say about
+			// a failed login. This is the terse problem body the carried-over
+			// review note predicted, decoded rather than panicked on.
+			body:       `{"type":"about:blank","title":"Unauthorized","status":401}`,
+			wantPath:   "/api/v1/auth/login",
+			wantErr:    true,
+			wantErrHas: []string{"Unauthorized"},
+			wantStatus: 401,
+		},
+		{
+			name:       "200 with a body that is not JSON",
+			call:       "login",
+			status:     http.StatusOK,
+			ctype:      "application/json",
+			body:       `{"token":`,
+			wantPath:   "/api/v1/auth/login",
+			wantErr:    true,
+			wantErrHas: []string{"decoding"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// t.Errorf is safe from the server's goroutine; t.Fatal is
+				// not - it calls runtime.Goexit, which would kill the handler
+				// and leave the client staring at a dropped connection.
+				//
+				// Both auth endpoints are security: [] in the spec. Sending a
+				// stale bearer token to the endpoint whose job is to replace
+				// it is how a 401 loop becomes unbreakable, so the absence of
+				// this header is a contract assertion, not a style one.
+				if got := r.Header.Get("Authorization"); got != "" {
+					t.Errorf("Authorization header = %q, want it absent", got)
+				}
+				if got, want := r.Header.Get("Content-Type"), "application/json"; got != want {
+					t.Errorf("Content-Type header = %q, want %q", got, want)
+				}
+				if got, want := r.Method, http.MethodPost; got != want {
+					t.Errorf("method = %q, want %q", got, want)
+				}
+				if got, want := r.URL.Path, tt.wantPath; got != want {
+					t.Errorf("path = %q, want %q", got, want)
+				}
+
+				// Decoded into an anonymous struct rather than
+				// openapi.RegisterRequest: this asserts the wire format from
+				// api/openapi.yaml directly, so a wrong json tag on the
+				// generated type cannot cancel itself out.
+				var got struct {
+					Email    string `json:"email"`
+					Password string `json:"password"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Errorf("decoding request body: %v", err)
+				} else {
+					if got.Email != testEmail {
+						t.Errorf("request email = %q, want %q", got.Email, testEmail)
+					}
+					if got.Password != testPassword {
+						t.Errorf("request password = %q, want %q", got.Password, testPassword)
+					}
+				}
+
+				w.Header().Set("Content-Type", tt.ctype)
+				w.WriteHeader(tt.status) // must precede the body write
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer srv.Close()
+
+			// A non-empty token on the client: the auth calls must not send
+			// it, and a client that has one is the realistic case - a 401
+			// mid-session re-logs in through this very path.
+			c := NewClient(srv.URL, "stale-token")
+
+			var (
+				tr  openapi.TokenResponse
+				err error
+			)
+			switch tt.call {
+			case "register":
+				tr, err = c.Register(context.Background(), testEmail, testPassword)
+			case "login":
+				tr, err = c.Login(context.Background(), testEmail, testPassword)
+			default:
+				t.Fatalf("unknown call %q", tt.call)
+			}
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("%s() error = nil, want an error", tt.call)
+				}
+				for _, want := range tt.wantErrHas {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("%s() error = %q, want it to contain %q", tt.call, err, want)
+					}
+				}
+				if tt.wantStatus != 0 {
+					var se *statusError
+					if !errors.As(err, &se) {
+						t.Errorf("%s() error = %q, want a *statusError", tt.call, err)
+					} else if se.Status != tt.wantStatus {
+						t.Errorf("%s() status = %d, want %d", tt.call, se.Status, tt.wantStatus)
+					}
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("%s() error = %v, want nil", tt.call, err)
+			}
+			if got := tr.Token; got != tt.wantToken {
+				t.Errorf("Token = %q, want %q", got, tt.wantToken)
+			}
+			if got, want := tr.TokenType, "Bearer"; got != want {
+				t.Errorf("TokenType = %q, want %q", got, want)
+			}
+			// The value session B's token store turns into an absolute
+			// expiry. Zero here would write a token that is already expired.
+			if got, want := tr.ExpiresIn, 3600; got != want {
+				t.Errorf("ExpiresIn = %d, want %d", got, want)
+			}
+		})
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/corygyarmathy/typist/internal/openapi"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // with pointer receivers, the target must be var se *statusError;
@@ -113,6 +114,58 @@ func (c *Client) SubmitSession(ctx context.Context, sub openapi.SessionSubmissio
 	}
 
 	return summary, nil
+}
+
+func (c *Client) authBody(ctx context.Context, path string, body any) (openapi.TokenResponse, error) {
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		return openapi.TokenResponse{}, fmt.Errorf("JSON marshalling authentication body: %w", err)
+	}
+	bodyReader := bytes.NewReader(jsonData)
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.baseURL+path,
+		bodyReader,
+	)
+	if err != nil {
+		return openapi.TokenResponse{}, fmt.Errorf("constructing get request: %w", err)
+	}
+
+	// set request headers
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := c.client.Do(req)
+	if err != nil {
+		return openapi.TokenResponse{}, fmt.Errorf("making get request: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode != http.StatusOK {
+		return openapi.TokenResponse{}, errorFromResponse(res)
+	}
+
+	var token openapi.TokenResponse
+	decoder := json.NewDecoder(res.Body)
+	err = decoder.Decode(&token)
+	if err != nil {
+		return openapi.TokenResponse{}, fmt.Errorf("decoding token response JSON: %w", err)
+	}
+
+	return token, nil
+}
+
+func (c *Client) Register(ctx context.Context, email, password string) (openapi.TokenResponse, error) {
+	addr := openapi_types.Email(email)
+	body := openapi.RegisterRequest{Email: addr, Password: password}
+	return c.authBody(ctx, "/api/v1/auth/register", body)
+}
+
+func (c *Client) Login(ctx context.Context, email, password string) (openapi.TokenResponse, error) {
+	addr := openapi_types.Email(email)
+	body := openapi.LoginRequest{Email: addr, Password: password}
+	return c.authBody(ctx, "/api/v1/auth/login", body)
 }
 
 func errorFromResponse(res *http.Response) error {
