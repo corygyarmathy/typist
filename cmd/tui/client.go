@@ -89,7 +89,7 @@ func (c *Client) SubmitSession(ctx context.Context, sub openapi.SessionSubmissio
 		bodyReader,
 	)
 	if err != nil {
-		return openapi.SessionSummary{}, fmt.Errorf("constructing get request: %w", err)
+		return openapi.SessionSummary{}, fmt.Errorf("constructing post request: %w", err)
 	}
 
 	// set request headers
@@ -98,7 +98,7 @@ func (c *Client) SubmitSession(ctx context.Context, sub openapi.SessionSubmissio
 
 	res, err := c.client.Do(req)
 	if err != nil {
-		return openapi.SessionSummary{}, fmt.Errorf("making get request: %w", err)
+		return openapi.SessionSummary{}, fmt.Errorf("making post request: %w", err)
 	}
 	defer func() { _ = res.Body.Close() }()
 
@@ -130,7 +130,7 @@ func (c *Client) authBody(ctx context.Context, path string, body any) (openapi.T
 		bodyReader,
 	)
 	if err != nil {
-		return openapi.TokenResponse{}, fmt.Errorf("constructing get request: %w", err)
+		return openapi.TokenResponse{}, fmt.Errorf("constructing post request: %w", err)
 	}
 
 	// set request headers
@@ -138,7 +138,7 @@ func (c *Client) authBody(ctx context.Context, path string, body any) (openapi.T
 
 	res, err := c.client.Do(req)
 	if err != nil {
-		return openapi.TokenResponse{}, fmt.Errorf("making get request: %w", err)
+		return openapi.TokenResponse{}, fmt.Errorf("making post request: %w", err)
 	}
 	defer func() { _ = res.Body.Close() }()
 
