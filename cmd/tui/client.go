@@ -15,6 +15,17 @@ import (
 	"github.com/corygyarmathy/typist/internal/openapi"
 )
 
+// with pointer receivers, the target must be var se *statusError;
+// errors.As(err, &se). Passing &statusError{} compiles and always
+// fails to match.
+type statusError struct {
+	Status int
+	err    error
+}
+
+func (e *statusError) Error() string { return e.err.Error() }
+func (e *statusError) Unwrap() error { return e.err }
+
 type Client struct {
 	client  *http.Client
 	baseURL string
@@ -105,6 +116,10 @@ func (c *Client) SubmitSession(ctx context.Context, sub openapi.SessionSubmissio
 }
 
 func errorFromResponse(res *http.Response) error {
+	return &statusError{Status: res.StatusCode, err: errorBody(res)}
+}
+
+func errorBody(res *http.Response) error {
 	var maxBytes int64 = 4 * 1024
 	if strings.HasPrefix(res.Header.Get("Content-Type"), "application/problem+json") {
 		var problem openapi.Problem
@@ -114,7 +129,7 @@ func errorFromResponse(res *http.Response) error {
 			return fmt.Errorf("HTTP error: %d, decoding problem JSON: %w", res.StatusCode, err)
 		}
 		return fmt.Errorf(
-			"title: %v. status: %v detail %v. instance %v",
+			"title: %v, status: %v, detail %v, instance %v",
 			problem.Title, problem.Status, deref(problem.Detail), deref(problem.Instance),
 		)
 	}
@@ -129,6 +144,9 @@ func errorFromResponse(res *http.Response) error {
 }
 
 func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
 	return *s
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"maps"
 	"net/http"
@@ -35,6 +36,8 @@ func TestClientNextLesson(t *testing.T) {
 		// passes whether errorFromResponse decoded the problem or dumped the
 		// raw body verbatim, because the raw body holds the same substrings.
 		wantErrLacks []string
+		// Status the recovered *statusError must carry. 0 means don't check.
+		wantStatus int
 	}{
 		{
 			name:   "200 decodes the lesson",
@@ -64,6 +67,7 @@ func TestClientNextLesson(t *testing.T) {
 			// Present only in the undecoded body, so their absence is what
 			// proves the problem+json branch actually ran.
 			wantErrLacks: []string{"{", "about:blank"},
+			wantStatus:   401,
 		},
 		{
 			name:   "404 from the mux has no problem body",
@@ -77,6 +81,7 @@ func TestClientNextLesson(t *testing.T) {
 			body:       "404 page not found\n",
 			wantErr:    true,
 			wantErrHas: []string{"404"},
+			wantStatus: 404,
 		},
 		{
 			name:       "200 with a body that is not JSON",
@@ -85,6 +90,21 @@ func TestClientNextLesson(t *testing.T) {
 			body:       `{"words": [`,
 			wantErr:    true,
 			wantErrHas: []string{"decoding"},
+		},
+		{
+			name:   "problem+json with no detail or instance",
+			status: http.StatusUnauthorized,
+			ctype:  "application/problem+json; charset=utf-8",
+			// Valid, complete per the spec: detail and instance are optional
+			// (openapi.Problem.Detail is *string). Before deref guarded nil,
+			// this panicked the client inside its own error path.
+			body:       `{"type":"about:blank","title":"Unauthorized","status":401}`,
+			wantErr:    true,
+			wantErrHas: []string{"Unauthorized", "401"},
+			// "decoding" would mean it took the decode-failure branch instead;
+			// "{" would mean it dumped the raw body.
+			wantErrLacks: []string{"decoding", "{"},
+			wantStatus:   401,
 		},
 	}
 
@@ -128,6 +148,14 @@ func TestClientNextLesson(t *testing.T) {
 				for _, unwanted := range tt.wantErrLacks {
 					if strings.Contains(err.Error(), unwanted) {
 						t.Errorf("NextLesson() error = %q, want it NOT to contain %q", err, unwanted)
+					}
+				}
+				if tt.wantStatus != 0 {
+					var se *statusError
+					if !errors.As(err, &se) {
+						t.Errorf("NextLesson() error = %q, want a *statusError", err)
+					} else if se.Status != tt.wantStatus {
+						t.Errorf("NextLesson() status = %d, want %d", se.Status, tt.wantStatus)
 					}
 				}
 				return
@@ -183,6 +211,8 @@ func TestClientSubmitSession(t *testing.T) {
 		// Asserting the absence of a JSON artifact is what tells the two
 		// apart.
 		wantErrLacks []string
+		// Status the recovered *statusError must carry. 0 means don't check.
+		wantStatus int
 	}{
 		{
 			name:   "201 decodes the summary",
@@ -206,6 +236,7 @@ func TestClientSubmitSession(t *testing.T) {
 			body:       `{"wpm":42,"accuracy":0.95}`,
 			wantErr:    true,
 			wantErrHas: []string{"200"},
+			wantStatus: 200,
 		},
 		{
 			name:   "400 surfaces the problem detail",
@@ -216,6 +247,7 @@ func TestClientSubmitSession(t *testing.T) {
 			wantErr:      true,
 			wantErrHas:   []string{"keys must not be empty", "req-def456"},
 			wantErrLacks: []string{"{", "about:blank"},
+			wantStatus:   400,
 		},
 		{
 			name:       "201 with a body that is not JSON",
@@ -281,6 +313,14 @@ func TestClientSubmitSession(t *testing.T) {
 				for _, unwanted := range tt.wantErrLacks {
 					if strings.Contains(err.Error(), unwanted) {
 						t.Errorf("SubmitSession() error = %q, want it NOT to contain %q", err, unwanted)
+					}
+				}
+				if tt.wantStatus != 0 {
+					var se *statusError
+					if !errors.As(err, &se) {
+						t.Errorf("NextLesson() error = %q, want a *statusError", err)
+					} else if se.Status != tt.wantStatus {
+						t.Errorf("NextLesson() status = %d, want %d", se.Status, tt.wantStatus)
 					}
 				}
 				return
