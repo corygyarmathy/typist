@@ -64,7 +64,7 @@ func (s *TokenStore) Save(tr openapi.TokenResponse, now time.Time) error {
 func (s *TokenStore) Load() (storedToken, error) {
 	file, err := os.ReadFile(s.path())
 	if err != nil {
-		return storedToken{}, fmt.Errorf("loading token file %w", err)
+		return storedToken{}, fmt.Errorf("loading token file: %w", err)
 	}
 	var token storedToken
 	err = json.Unmarshal(file, &token)

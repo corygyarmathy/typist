@@ -182,7 +182,7 @@ func errorBody(res *http.Response) error {
 			return fmt.Errorf("HTTP error: %d, decoding problem JSON: %w", res.StatusCode, err)
 		}
 		return fmt.Errorf(
-			"title: %v, status: %v, detail %v, instance %v",
+			"title: %v, status: %v, detail: %v, instance: %v",
 			problem.Title, problem.Status, deref(problem.Detail), deref(problem.Instance),
 		)
 	}
