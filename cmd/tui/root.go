@@ -21,9 +21,11 @@ type screen interface {
 	View() tea.View
 }
 
-// errMsg is the one message every screen can emit and none of them handles:
-// root renders the error, because a screen that displays its own failures has
-// to know how to be two things at once.
+// errMsg is sent when a screen encounters an error the user cannot act on from
+// that screen, replacing the whole program with the error message and no way
+// back without restarting it. A screen that offers a retry shows its failures
+// itself instead, since a failure the user can fix there should not end the
+// program.
 type errMsg error
 
 type root struct {
