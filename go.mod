@@ -1,6 +1,6 @@
 module github.com/corygyarmathy/typist
 
-go 1.26.0
+go 1.26.7
 
 // Dependencies will be added as each phase is implemented
 // Expected core set after phase 4:
@@ -10,7 +10,7 @@ go 1.26.0
 
 require (
 	charm.land/bubbletea/v2 v2.1.1
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.0
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
