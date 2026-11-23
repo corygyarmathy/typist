@@ -9,7 +9,7 @@ go 1.26.7
 //   - github.com/prometheus/client_golang
 
 require (
-	charm.land/bubbletea/v2 v2.1.1
+	charm.land/bubbletea/v2 v2.1.2
 	charm.land/lipgloss/v2 v2.1.1
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/golang-jwt/jwt/v5 v5.3.1
